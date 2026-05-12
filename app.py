@@ -148,14 +148,27 @@ with col2:
 
 st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=200)
 
-# --- 6. RIASSUNTO VOCALE DI CONFERMA ---
+# --- 6. RIASSUNTO VOCALE DI CONFERMA (Riepilogo completo di tutte le voci) ---
 if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
     d = st.session_state.form_data
-    testo = f"Ho compilato il modulo. Cliente: {d['cliente']}, Oggetto: {d['oggetto']}. Vibes: {d['vibes']}. Confermi il caricamento?"
-    audio_msg = speak(testo)
-    if audio_msg:
-        st.audio(audio_msg, autoplay=True)
-        st.session_state.audio_summary_done = True
+    
+    # Costruiamo un messaggio che includa tutti i campi del modulo
+    testo_riepilogo = (
+        f"Ricevuto. Ecco il riepilogo completo dell'evento. "
+        f"Cliente: {d['cliente']}. "
+        f"Contatto: {d['contatto'] if d['contatto'] else 'non specificato'}. "
+        f"Tipologia: {d['tipologia']}. "
+        f"Oggetto: {d['oggetto']}. "
+        f"Note: {d['note']}. "
+        f"Esito dell'incontro: {d['vibes']}. "
+        f"Se è tutto corretto, procedi pure con il salvataggio."
+    )
+    
+    with st.spinner("L'AI sta leggendo il riepilogo finale..."):
+        audio_msg = speak(testo_riepilogo)
+        if audio_msg:
+            st.audio(audio_msg, autoplay=True)
+            st.session_state.audio_summary_done = True
 
 # --- 7. SALVATAGGIO ---
 st.divider()
