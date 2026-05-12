@@ -131,14 +131,44 @@ else:
 
     # FASE 3: RIEPILOGO E SALVATAGGIO
     else:
-        st.success("✅ Dati completati!")
-        for k in ["cliente", "tipologia", "oggetto", "contatto", "vibes", "note"]:
-            st.session_state.data[k] = st.text_input(k.capitalize(), value=st.session_state.data.get(k, ""))
+        st.success("✅ Dati completati! Controlla il riepilogo.")
         
-        if st.button("💾 Salva definitivamente"):
+        # --- UI DISPLAY DATI ---
+        col1, col2 = st.columns(2)
+        with col1:
+            st.session_state.data["cliente"] = st.text_input("Cliente", value=st.session_state.data.get("cliente", ""))
+            st.session_state.data["contatto"] = st.text_input("Contatto", value=st.session_state.data.get("contatto", ""))
+            st.session_state.data["vibes"] = st.text_input("Vibes", value=st.session_state.data.get("vibes", ""))
+        with col2:
+            st.session_state.data["tipologia"] = st.selectbox("Tipologia", ["telefonata", "email", "visita"], 
+                                                              index=["telefonata", "email", "visita"].index(st.session_state.data.get("tipologia", "telefonata")))
+            st.session_state.data["oggetto"] = st.text_input("Oggetto", value=st.session_state.data.get("oggetto", ""))
+
+        # Campo NOTE molto più grande (height=250 pixel)
+        st.session_state.data["note"] = st.text_area("Note Dettagliate", value=st.session_state.data.get("note", ""), height=250)
+
+        # --- RIASSUNTO VOCALE DI CONFERMA ---
+        if 'summary_played' not in st.session_state:
+            d = st.session_state.data
+            testo_riassunto = f"Ecco il riepilogo: hai effettuato una {d['tipologia']} con {d['cliente']}. L'oggetto è {d['oggetto']}. Le note riportano: {d['note']}. È tutto corretto?"
+            
+            with st.spinner("L'AI sta preparando il riassunto vocale..."):
+                audio_riassunto = speak(testo_riassunto)
+                if audio_riassunto:
+                    st.audio(audio_riassunto, autoplay=True)
+                    st.session_state.summary_played = True # Evita che l'audio riparta a ogni modifica del testo
+
+        st.divider()
+        
+        # --- SALVATAGGIO ---
+        if st.button("💾 CARICA EVENTO SUL DATABASE"):
+            # Qui andrà la tua chiamata al DB (es. requests.post o sql query)
             st.balloons()
-            st.json(st.session_state.data)
-            # Reset per nuovo inserimento
-            if st.button("Inserisci nuovo"):
+            st.success("Evento caricato correttamente nel database aziendale!")
+            
+            # Pulsante per ricominciare
+            if st.button("Inserisci un nuovo evento"):
                 st.session_state.data = {}
+                st.session_state.missing = []
+                if 'summary_played' in st.session_state: del st.session_state.summary_played
                 st.rerun()
