@@ -58,6 +58,9 @@ def analyze_full_report(audio_bytes):
     Analizza il suo rapporto e restituisci un JSON.
     I campi sono: cliente, tipologia, oggetto, contatto, vibes, note.
 
+    REGOLE PER IL CAMPO "contatto"
+    - Inserisce nome e cognome se noti e tra parentesi l'ufficio o l'area aziendale del contatto.
+
     REGOLE CRITICHE PER IL CAMPO 'tipologia':
     - Indica la tipologia dell'evento.
     - Deve essere SOLO uno di questi tre valori: "telefonata", "email", "visita".
@@ -68,12 +71,12 @@ def analyze_full_report(audio_bytes):
 
     REGOLE PER IL CAMPO 'oggetto':
     - Inserisci solo il motivo che ha generato l'evento. 
-    - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di circa 10 parole.
+    - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 10 parole.
     - Se non dice nulla di utile per l'oggetto, scrivi null.
 
     REGOLE PER LE NOTE
     - Inserisci le impressioni del commerciale sull'oggetto dell'evento o su altre questioni sorte durante l'evento.
-    - Fai un riassunto di circa 40 parole. 
+    - Fai un riassunto esaustivo. 
     
 
     Se un dato manca, usa null.
