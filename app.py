@@ -86,7 +86,7 @@ def analyze_report(audio_bytes):
     
 
 # --- 5. LOGICA PRINCIPALE ---
-st.title("🎙️ Assistente Vendite Intelligente")
+st.title("Assistente Commerciale")
 
 if not api_key:
     st.warning("⚠️ Inserisci la tua OpenAI API Key nella barra laterale.")
