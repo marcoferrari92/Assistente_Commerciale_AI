@@ -2,111 +2,92 @@ import streamlit as st
 from openai import OpenAI
 from streamlit_mic_recorder import mic_recorder
 import io
+import json
 
-st.set_page_config(page_title="AI Sales Assistant", page_icon="🎙️")
+st.set_page_config(page_title="AI Smart Sales", page_icon="🎙️")
 
-# --- CSS per nascondere elementi inutili e migliorare UI ---
-st.markdown("""
-    <style>
-    .stButton>button { width: 100%; border-radius: 20px; height: 3em; background-color: #FF4B4B; color: white; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- INIZIALIZZAZIONE ---
+if 'data' not in st.session_state:
+    st.session_state.data = {}
+if 'missing' not in st.session_state:
+    st.session_state.missing = []
 
-# --- INIZIALIZZAZIONE STATO ---
-# Usiamo un ciclo per assicurarci che tutto sia presente al primo avvio
-if 'step' not in st.session_state:
-    st.session_state.step = 0
-if 'form_data' not in st.session_state:
-    st.session_state.form_data = {}
-if 'active' not in st.session_state:
-    st.session_state.active = False
-
-with st.sidebar:
-    api_key = st.text_input("OpenAI API Key", type="password")
-    if st.button("🔄 Reset Assistente"):
-        st.session_state.step = 0
-        st.session_state.form_data = {}
-        st.session_state.active = False
-        st.rerun()
-
-steps = [
-    {"campo": "cliente", "domanda": "Con quale cliente hai parlato?"},
-    {"campo": "tipologia", "domanda": "È stata una telefonata, una mail o una visita?"},
-    {"campo": "oggetto", "domanda": "Qual era l'oggetto dell'evento?"},
-    {"campo": "contatto", "domanda": "Con chi hai parlato?"},
-    {"campo": "vibes", "domanda": "Com'è andata? È stata positiva o negativa?"},
-    {"campo": "note", "domanda": "Dettagli o note aggiuntive?"}
-]
+def get_client():
+    return OpenAI(api_key=st.sidebar.text_input("OpenAI API Key", type="password"))
 
 def speak(text):
-    client = OpenAI(api_key=api_key)
-    # Assicuriamoci che non ci siano spazi strani o caratteri speciali
-    clean_text = text.strip() 
-    
-    response = client.audio.speech.create(
-        model="tts-1",
-        voice="nova", # Prova 'nova' o 'shimmer', sono meno "americane"
-        input=clean_text
-    )
+    client = get_client()
+    response = client.audio.speech.create(model="tts-1", voice="nova", input=text)
     return response.content
 
-def transcribe(audio_bytes):
-    client = OpenAI(api_key=api_key)
+def analyze_report(audio_bytes):
+    client = get_client()
+    # 1. Trascrizione
     audio_file = io.BytesIO(audio_bytes)
     audio_file.name = "audio.mp3"
+    transcript = client.audio.transcriptions.create(model="whisper-1", file=audio_file, language="it")
     
-    # Aggiungiamo 'language="it"' per bloccare la lingua
-    transcript = client.audio.transcriptions.create(
-        model="whisper-1", 
-        file=audio_file,
-        language="it" 
+    # 2. Analisi e Check con GPT-4o
+    prompt = """
+    Analizza il rapporto commerciale e restituisci un JSON. 
+    Campi: cliente, tipologia, oggetto, contatto, vibes, note.
+    Se un dato manca, scrivi "null" nel valore del campo.
+    Aggiungi un campo 'mancanti' che sia una lista dei nomi dei campi non trovati.
+    """
+    
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": transcript.text}
+        ],
+        response_format={ "type": "json_object" }
     )
-    return transcript.text
+    return json.loads(response.choices[0].message.content)
 
-# --- FLUSSO PRINCIPALE ---
-st.title("🎙️ Assistente Vocale Commerciali")
+# --- INTERFACCIA ---
+st.title("🎙️ Assistente Vendite Intelligente")
 
-if not api_key:
-    st.warning("Inserisci l'API Key per iniziare.")
-elif not st.session_state.active:
-    # PULSANTE DI AVVIO UNICO
-    if st.button("🚀 INIZIA PROCEDURA GUIDATA"):
-        st.session_state.active = True
+if not st.session_state.data:
+    st.info("💡 **Cosa dire:** Cliente, tipo evento, oggetto, con chi hai parlato, vibes e note.")
+    
+    audio = mic_recorder(start_prompt="Racconta l'evento 🎤", stop_prompt="Analizza ⚙️", key="main_mic")
+    
+    if audio:
+        res = analyze_report(audio['bytes'])
+        st.session_state.data = res
+        st.session_state.missing = res.get('mancanti', [])
         st.rerun()
+
+# --- GESTIONE DATI MANCANTI ---
+elif st.session_state.missing:
+    campo_mancante = st.session_state.missing[0]
+    messaggio = f"Ho registrato quasi tutto, ma mi manca il campo: {campo_mancante}. Puoi dirmelo?"
+    
+    # L'AI ti avvisa a voce di cosa manca
+    st.warning(f"⚠️ {messaggio}")
+    st.audio(speak(messaggio), autoplay=True)
+    
+    integrazione = mic_recorder(start_prompt=f"Dimmi: {campo_mancante} 🎤", key=f"fix_{campo_mancante}")
+    
+    if integrazione:
+        # Qui potresti fare un'altra mini-trascrizione semplice
+        client = get_client()
+        audio_fix = io.BytesIO(integrazione['bytes'])
+        audio_fix.name = "fix.mp3"
+        testo_fix = client.audio.transcriptions.create(model="whisper-1", file=audio_fix, language="it").text
+        
+        st.session_state.data[campo_mancante] = testo_fix
+        st.session_state.missing.pop(0)
+        st.rerun()
+
+# --- RIEPILOGO FINALE ---
 else:
-    if st.session_state.step < len(steps):
-        current = steps[st.session_state.step]
-        
-        # 1. L'AI fa la domanda
-        st.subheader(f"Step {st.session_state.step + 1} di {len(steps)}")
-        audio_q = speak(current['domanda'])
-        st.audio(audio_q, format="audio/mp3", autoplay=True)
-        st.info(f"🎤 **AI dice:** {current['domanda']}")
-
-        # 2. Registratore - Qui l'utente parla
-        # Il trucco: usiamo il componente mic_recorder. 
-        # Appena riceve l'audio, il codice sotto viene eseguito.
-        audio_input = mic_recorder(
-            start_prompt="Clicca e parla (si ferma da solo)",
-            stop_prompt="In elaborazione...",
-            key=f"mic_{st.session_state.step}",
-            just_once=True, # Importante per evitare loop infiniti
-        )
-
-        if audio_input:
-            with st.spinner("Trascrizione..."):
-                testo = transcribe(audio_input['bytes'])
-                # Salvataggio immediato
-                st.session_state.form_data[current['campo']] = testo
-                # Avanzamento automatico allo step successivo
-                st.session_state.step += 1
-                st.rerun() 
-    else:
+    st.success("✅ Ottimo! Ho tutti i dati.")
+    for k, v in st.session_state.data.items():
+        if k != 'mancanti':
+            st.text_input(k.capitalize(), value=v)
+    
+    if st.button("Conferma e Invia"):
         st.balloons()
-        st.success("✅ Procedura completata! Ecco i dati raccolti:")
-        st.write(st.session_state.form_data)
-        
-        # Logica di salvataggio finale
-        if st.button("💾 Salva definitivamente"):
-            # Aggiungi qui la tua logica (DB, CSV, Google Sheets)
-            st.write("Dati inviati al database!")
+        st.session_state.data = {} # Reset per il prossimo evento
