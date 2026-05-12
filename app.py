@@ -12,11 +12,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- INIZIALIZZAZIONE ---
+# --- INIZIALIZZAZIONE STATO ---
+# Usiamo un ciclo per assicurarci che tutto sia presente al primo avvio
 if 'step' not in st.session_state:
     st.session_state.step = 0
+if 'form_data' not in st.session_state:
     st.session_state.form_data = {}
-    st.session_state.active = False # L'app parte "ferma"
+if 'active' not in st.session_state:
+    st.session_state.active = False
 
 with st.sidebar:
     api_key = st.text_input("OpenAI API Key", type="password")
