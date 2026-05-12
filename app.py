@@ -48,10 +48,12 @@ def analyze_report(audio_bytes):
     
     # Analisi JSON con vincolo sulla tipologia
     prompt = """
-    Sei un assistente commerciale. Analizza il rapporto e restituisci un JSON.
+    Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
+    Analizza il suo rapporto e restituisci un JSON.
     I campi sono: cliente, tipologia, oggetto, contatto, vibes, note.
 
     REGOLE CRITICHE PER IL CAMPO 'tipologia':
+    - Indica la tipologia dell'evento.
     - Deve essere SOLO uno di questi tre valori: "telefonata", "email", "visita".
     - Se l'utente dice "ho chiamato" o "ci siamo sentiti", usa "telefonata".
     - Se l'utente dice "ho scritto" o "mi ha risposto alla mail", usa "email".
@@ -59,9 +61,14 @@ def analyze_report(audio_bytes):
     - Se non è chiaro, scrivi null.
 
     REGOLE PER IL CAMPO 'oggetto':
-    - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 10 parole.
-    - Esempio: se dice "sono andato da Rossi per il problema dei bulloni", l'oggetto diventa "Discussione risoluzione problematiche fornitura bulloni".
+    - Inserisci solo il motivo che ha generato l'evento. 
+    - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di circa 10 parole.
     - Se non dice nulla di utile per l'oggetto, scrivi null.
+
+    REGOLE PER LE NOTE
+    - Inserisci le impressioni del commerciale sull'oggetto dell'evento o su altre questioni sorte durante l'evento.
+    - Fai un riassunto di circa 40 parole. 
+    
 
     Se un dato manca, usa null.
     Aggiungi il campo 'mancanti' con la lista dei campi null.
