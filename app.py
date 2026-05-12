@@ -75,8 +75,8 @@ def analyze_full_report(audio_bytes):
     - Se non dice nulla di utile per l'oggetto, scrivi null.
 
     REGOLE PER LE NOTE
-    - Inserisci le impressioni del commerciale sull'oggetto dell'evento o su altre questioni sorte durante l'evento.
-    - Fai un riassunto esaustivo. 
+    - Inserisci le impressioni del commerciale sull'oggetto dell'evento
+    - Inserisci tutte le note tecniche in modo esaustivo
     
 
     Se un dato manca, usa null.
