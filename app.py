@@ -59,7 +59,7 @@ def analyze_report(audio_bytes):
     - Se non è chiaro, scrivi null.
 
     REGOLE PER IL CAMPO 'oggetto':
-    - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 6-8 parole.
+    - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 10 parole.
     - Esempio: se dice "sono andato da Rossi per il problema dei bulloni", l'oggetto diventa "Discussione risoluzione problematiche fornitura bulloni".
     - Se non dice nulla di utile per l'oggetto, scrivi null.
 
