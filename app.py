@@ -42,7 +42,7 @@ def speak(text):
         st.error(f"Errore TTS: {e}")
         return None
 
-def analyze_report(audio_bytes):
+def analyze_full_report(audio_bytes):
     if not client: return None
     
     # Trascrizione Whisper
