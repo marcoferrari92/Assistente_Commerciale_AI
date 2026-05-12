@@ -137,7 +137,7 @@ with col1:
     v_idx = 1 if v_val and "Negative" in v_val else 0
     
     st.session_state.form_data["vibes"] = st.radio(
-        "Vibes", ["Positive 👍", "Negative 👎"], 
+        "Esito evento", ["Positivo 👍", "Negativo 👎"], 
         index=v_idx, horizontal=True, label_visibility="collapsed"
     )
 
