@@ -47,7 +47,13 @@ def transcribe(audio_bytes):
     client = OpenAI(api_key=api_key)
     audio_file = io.BytesIO(audio_bytes)
     audio_file.name = "audio.mp3"
-    transcript = client.audio.transcriptions.create(model="whisper-1", file=audio_file)
+    
+    # Aggiungiamo 'language="it"' per bloccare la lingua
+    transcript = client.audio.transcriptions.create(
+        model="whisper-1", 
+        file=audio_file,
+        language="it" 
+    )
     return transcript.text
 
 # --- FLUSSO PRINCIPALE ---
