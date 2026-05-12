@@ -4,29 +4,33 @@ from streamlit_mic_recorder import mic_recorder
 import io
 import json
 
-st.set_page_config(page_title="AI Smart Sales", page_icon="🎙️")
+st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
 
 # --- 1. INIZIALIZZAZIONE STATO ---
-if 'data' not in st.session_state:
-    st.session_state.data = {}
-if 'missing' not in st.session_state:
-    st.session_state.missing = []
+# Inizializziamo i campi se non esistono, così sono pronti per la compilazione manuale
+if 'form_data' not in st.session_state:
+    st.session_state.form_data = {
+        "cliente": "",
+        "tipologia": "telefonata",
+        "oggetto": "",
+        "contatto": "",
+        "vibes": "Positive 👍",
+        "note": ""
+    }
+if 'audio_summary_done' not in st.session_state:
+    st.session_state.audio_summary_done = False
 
-# --- 2. SIDEBAR (Widget dichiarati UNA SOLA VOLTA) ---
+# --- 2. SIDEBAR ---
 with st.sidebar:
     st.header("Configurazione")
-    # Definiamo la chiave API qui e la usiamo ovunque tramite variabile
     api_key = st.text_input("OpenAI API Key", type="password", key="main_api_key")
-    
-    if st.button("🔄 Reset Totale"):
-        st.session_state.data = {}
-        st.session_state.missing = []
+    if st.button("🗑️ Svuota Modulo"):
+        st.session_state.form_data = {k: "" if k != "tipologia" else "telefonata" for k in st.session_state.form_data}
+        st.session_state.form_data["vibes"] = "Positive 👍"
+        st.session_state.audio_summary_done = False
         st.rerun()
 
-# --- 3. CREAZIONE CLIENT ---
-client = None
-if api_key:
-    client = OpenAI(api_key=api_key)
+client = OpenAI(api_key=api_key) if api_key else None
 
 # --- 4. FUNZIONI (Senza widget interni) ---
 def speak(text):
@@ -88,96 +92,61 @@ def analyze_report(audio_bytes):
 # --- 5. LOGICA PRINCIPALE ---
 st.title("Assistente Commerciale")
 
+# SEZIONE ASSISTENTE VOCALE (Sempre disponibile in alto)
+st.write("### 🎤 Assistente Rapido")
 if not api_key:
-    st.warning("⚠️ Inserisci la tua OpenAI API Key nella barra laterale.")
+    st.warning("Inserisci l'API Key per usare la voce.")
 else:
-    # FASE 1: RACCONTO INIZIALE
-    if not st.session_state.data:
-        st.info("💡 Racconta l'evento (Cliente, tipo, oggetto, contatto, vibes, note).")
-        audio = mic_recorder(start_prompt="Inizia a raccontare 🎤", stop_prompt="Analizza ⚙️", key="main_mic")
-        
-        if audio:
-            with st.spinner("Analisi in corso..."):
-                res = analyze_report(audio['bytes'])
-                if res:
-                    st.session_state.data = res
-                    st.session_state.missing = res.get('mancanti', [])
-                    st.rerun()
-
-    # FASE 2: RECUPERO DATI MANCANTI
-    elif st.session_state.missing:
-        campo_mancante = st.session_state.missing[0]
-        messaggio = f"Mi manca il campo: {campo_mancante}. Puoi dirmelo?"
-        
-        st.warning(f"🔎 {messaggio}")
-        
-        # Audio di avviso (solo una volta per step)
-        audio_msg = speak(messaggio)
-        if audio_msg:
-            st.audio(audio_msg, autoplay=True)
-        
-        integrazione = mic_recorder(start_prompt=f"Rispondi per: {campo_mancante} 🎤", key=f"fix_{campo_mancante}")
-        
-        if integrazione:
-            with st.spinner("Aggiornamento..."):
-                audio_fix = io.BytesIO(integrazione['bytes'])
-                audio_fix.name = "fix.mp3"
-                testo_fix = client.audio.transcriptions.create(model="whisper-1", file=audio_fix, language="it").text
-                
-                # Aggiorna dati e rimuovi dai mancanti
-                st.session_state.data[campo_mancante] = testo_fix
-                st.session_state.missing.pop(0)
+    audio = mic_recorder(start_prompt="Racconta l'evento per compilare il modulo 🎤", 
+                         stop_prompt="Elabora racconto ✨", key="main_mic")
+    if audio:
+        with st.spinner("L'AI sta compilando il modulo per te..."):
+            res = analyze_full_report(audio['bytes'])
+            if res:
+                # Aggiorniamo lo stato con i dati dell'AI
+                for k in st.session_state.form_data.keys():
+                    if k in res and res[k]: st.session_state.form_data[k] = res[k]
+                st.session_state.audio_summary_done = False # Resetta per far parlare l'AI col nuovo riassunto
                 st.rerun()
 
-    # FASE 3: RIEPILOGO E SALVATAGGIO
-    else:
-        st.success("✅ Dati completati! Controlla il riepilogo.")
-        
-        # --- UI DISPLAY DATI ---
-        col1, col2 = st.columns(2)
-        with col1:
-            st.session_state.data["cliente"] = st.text_input("Cliente", value=st.session_state.data.get("cliente", ""))
-            st.session_state.data["contatto"] = st.text_input("Contatto", value=st.session_state.data.get("contatto", ""))
-            st.session_state.data["vibes"] = st.text_input("Vibes", value=st.session_state.data.get("vibes", ""))
-        with col2:
-            opzioni = ["telefonata", "email", "visita"]
-            valore_estratto = st.session_state.data.get("tipologia", "telefonata")
-            idx = opzioni.index(valore_estratto) if valore_estratto in opzioni else 0
-            st.session_state.data["tipologia"] = st.selectbox("Tipologia", opzioni, index=idx)
-            st.session_state.data["oggetto"] = st.text_input("Oggetto", value=st.session_state.data.get("oggetto", ""))
+st.divider()
 
-        # Campo NOTE grande
-        st.session_state.data["note"] = st.text_area("Note Dettagliate", value=st.session_state.data.get("note", ""), height=250)
+# --- 5. IL MODULO (Sempre presente e modificabile a mano) ---
+st.write("### 📝 Modulo Evento")
 
-        # --- LOGICA AUTOPLAY RIASSUNTO ---
-        if 'riassunto_fatto' not in st.session_state:
-            d = st.session_state.data
-            testo_conferma = (
-                f"Ottimo lavoro. Ho preparato il riepilogo: "
-                f"si tratta di una {d['tipologia']} con il cliente {d['cliente']}. "
-                f"L'oggetto è: {d['oggetto']}. "
-                f"Nelle note ho inserito che: {d['note']}. "
-                f"Se è tutto corretto, premi il tasto per salvare."
-            )
-            
-            with st.spinner("Generazione riassunto vocale..."):
-                audio_conferma = speak(testo_conferma)
-                if audio_conferma:
-                    # L'autoplay=True lo farà partire appena finisce il caricamento
-                    st.audio(audio_conferma, format="audio/mp3", autoplay=True)
-                    # Segniamo che è stato riprodotto per non farlo ripartire al prossimo refresh
-                    st.session_state.riassunto_fatto = True
+col1, col2 = st.columns(2)
+with col1:
+    st.session_state.form_data["cliente"] = st.text_input("Cliente", value=st.session_state.form_data["cliente"])
+    st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
+    
+    st.write("**Esito (Vibes):**")
+    v_idx = 0 if "Positive" in st.session_state.form_data["vibes"] else 1
+    st.session_state.form_data["vibes"] = st.radio("Vibes", ["Positive 👍", "Negative 👎"], 
+                                                  index=v_idx, horizontal=True, label_visibility="collapsed")
 
-        st.divider()
-        
-        # --- PULSANTE DATABASE ---
-        if st.button("💾 CARICA EVENTO SUL DATABASE", type="primary"):
-            # Qui inseriremo il codice per il tuo DB specifico
-            st.balloons()
-            st.success("Evento inviato con successo al Database!")
-            
-            if st.button("Inserisci un altro evento"):
-                # Reset completo per ricominciare
-                for key in ['data', 'missing', 'riassunto_fatto']:
-                    if key in st.session_state: del st.session_state[key]
-                st.rerun()
+with col2:
+    t_options = ["telefonata", "email", "visita"]
+    t_val = st.session_state.form_data["tipologia"]
+    t_idx = t_options.index(t_val) if t_val in t_options else 0
+    st.session_state.form_data["tipologia"] = st.selectbox("Tipologia", t_options, index=t_idx)
+    
+    st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
+
+st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=200)
+
+# --- 6. RIASSUNTO VOCALE DI CONFERMA (Solo se compilato tramite AI o su richiesta) ---
+if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
+    d = st.session_state.form_data
+    testo = f"Ho compilato il modulo. Cliente: {d['cliente']}, Oggetto: {d['oggetto']}. Vibes: {d['vibes']}. Confermi il caricamento?"
+    audio_msg = speak(testo)
+    if audio_msg:
+        st.audio(audio_msg, autoplay=True)
+        st.session_state.audio_summary_done = True
+
+# --- 7. SALVATAGGIO ---
+st.divider()
+if st.button("💾 SALVA EVENTO SUL DATABASE", type="primary", use_container_width=True):
+    # QUI inserisci il codice per il database
+    st.balloons()
+    st.success("Evento registrato correttamente!")
+    st.write("Dati inviati:", st.session_state.form_data)
