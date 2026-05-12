@@ -6,32 +6,51 @@ import json
 
 st.set_page_config(page_title="AI Smart Sales", page_icon="🎙️")
 
-# --- INIZIALIZZAZIONE ---
+# --- 1. INIZIALIZZAZIONE STATO ---
 if 'data' not in st.session_state:
     st.session_state.data = {}
 if 'missing' not in st.session_state:
     st.session_state.missing = []
 
-def get_client():
-    return OpenAI(api_key=st.sidebar.text_input("OpenAI API Key", type="password"))
+# --- 2. SIDEBAR (Widget dichiarati UNA SOLA VOLTA) ---
+with st.sidebar:
+    st.header("Configurazione")
+    # Definiamo la chiave API qui e la usiamo ovunque tramite variabile
+    api_key = st.text_input("OpenAI API Key", type="password", key="main_api_key")
+    
+    if st.button("🔄 Reset Totale"):
+        st.session_state.data = {}
+        st.session_state.missing = []
+        st.rerun()
 
+# --- 3. CREAZIONE CLIENT ---
+client = None
+if api_key:
+    client = OpenAI(api_key=api_key)
+
+# --- 4. FUNZIONI (Senza widget interni) ---
 def speak(text):
-    client = get_client()
-    response = client.audio.speech.create(model="tts-1", voice="nova", input=text)
-    return response.content
+    if not client: return None
+    try:
+        response = client.audio.speech.create(model="tts-1", voice="nova", input=text)
+        return response.content
+    except Exception as e:
+        st.error(f"Errore TTS: {e}")
+        return None
 
 def analyze_report(audio_bytes):
-    client = get_client()
-    # 1. Trascrizione
+    if not client: return None
+    
+    # Trascrizione
     audio_file = io.BytesIO(audio_bytes)
     audio_file.name = "audio.mp3"
     transcript = client.audio.transcriptions.create(model="whisper-1", file=audio_file, language="it")
     
-    # 2. Analisi e Check con GPT-4o
+    # Analisi JSON
     prompt = """
     Analizza il rapporto commerciale e restituisci un JSON. 
     Campi: cliente, tipologia, oggetto, contatto, vibes, note.
-    Se un dato manca, scrivi "null" nel valore del campo.
+    Se un dato manca, usa null (senza virgolette).
     Aggiungi un campo 'mancanti' che sia una lista dei nomi dei campi non trovati.
     """
     
@@ -45,49 +64,60 @@ def analyze_report(audio_bytes):
     )
     return json.loads(response.choices[0].message.content)
 
-# --- INTERFACCIA ---
+# --- 5. LOGICA PRINCIPALE ---
 st.title("🎙️ Assistente Vendite Intelligente")
 
-if not st.session_state.data:
-    st.info("💡 **Cosa dire:** Cliente, tipo evento, oggetto, con chi hai parlato, vibes e note.")
-    
-    audio = mic_recorder(start_prompt="Racconta l'evento 🎤", stop_prompt="Analizza ⚙️", key="main_mic")
-    
-    if audio:
-        res = analyze_report(audio['bytes'])
-        st.session_state.data = res
-        st.session_state.missing = res.get('mancanti', [])
-        st.rerun()
-
-# --- GESTIONE DATI MANCANTI ---
-elif st.session_state.missing:
-    campo_mancante = st.session_state.missing[0]
-    messaggio = f"Ho registrato quasi tutto, ma mi manca il campo: {campo_mancante}. Puoi dirmelo?"
-    
-    # L'AI ti avvisa a voce di cosa manca
-    st.warning(f"⚠️ {messaggio}")
-    st.audio(speak(messaggio), autoplay=True)
-    
-    integrazione = mic_recorder(start_prompt=f"Dimmi: {campo_mancante} 🎤", key=f"fix_{campo_mancante}")
-    
-    if integrazione:
-        # Qui potresti fare un'altra mini-trascrizione semplice
-        client = get_client()
-        audio_fix = io.BytesIO(integrazione['bytes'])
-        audio_fix.name = "fix.mp3"
-        testo_fix = client.audio.transcriptions.create(model="whisper-1", file=audio_fix, language="it").text
-        
-        st.session_state.data[campo_mancante] = testo_fix
-        st.session_state.missing.pop(0)
-        st.rerun()
-
-# --- RIEPILOGO FINALE ---
+if not api_key:
+    st.warning("⚠️ Inserisci la tua OpenAI API Key nella barra laterale.")
 else:
-    st.success("✅ Ottimo! Ho tutti i dati.")
-    for k, v in st.session_state.data.items():
-        if k != 'mancanti':
-            st.text_input(k.capitalize(), value=v)
-    
-    if st.button("Conferma e Invia"):
-        st.balloons()
-        st.session_state.data = {} # Reset per il prossimo evento
+    # FASE 1: RACCONTO INIZIALE
+    if not st.session_state.data:
+        st.info("💡 Racconta l'evento (Cliente, tipo, oggetto, contatto, vibes, note).")
+        audio = mic_recorder(start_prompt="Inizia a raccontare 🎤", stop_prompt="Analizza ⚙️", key="main_mic")
+        
+        if audio:
+            with st.spinner("Analisi in corso..."):
+                res = analyze_report(audio['bytes'])
+                if res:
+                    st.session_state.data = res
+                    st.session_state.missing = res.get('mancanti', [])
+                    st.rerun()
+
+    # FASE 2: RECUPERO DATI MANCANTI
+    elif st.session_state.missing:
+        campo_mancante = st.session_state.missing[0]
+        messaggio = f"Mi manca il campo: {campo_mancante}. Puoi dirmelo?"
+        
+        st.warning(f"🔎 {messaggio}")
+        
+        # Audio di avviso (solo una volta per step)
+        audio_msg = speak(messaggio)
+        if audio_msg:
+            st.audio(audio_msg, autoplay=True)
+        
+        integrazione = mic_recorder(start_prompt=f"Rispondi per: {campo_mancante} 🎤", key=f"fix_{campo_mancante}")
+        
+        if integrazione:
+            with st.spinner("Aggiornamento..."):
+                audio_fix = io.BytesIO(integrazione['bytes'])
+                audio_fix.name = "fix.mp3"
+                testo_fix = client.audio.transcriptions.create(model="whisper-1", file=audio_fix, language="it").text
+                
+                # Aggiorna dati e rimuovi dai mancanti
+                st.session_state.data[campo_mancante] = testo_fix
+                st.session_state.missing.pop(0)
+                st.rerun()
+
+    # FASE 3: RIEPILOGO E SALVATAGGIO
+    else:
+        st.success("✅ Dati completati!")
+        for k in ["cliente", "tipologia", "oggetto", "contatto", "vibes", "note"]:
+            st.session_state.data[k] = st.text_input(k.capitalize(), value=st.session_state.data.get(k, ""))
+        
+        if st.button("💾 Salva definitivamente"):
+            st.balloons()
+            st.json(st.session_state.data)
+            # Reset per nuovo inserimento
+            if st.button("Inserisci nuovo"):
+                st.session_state.data = {}
+                st.rerun()
