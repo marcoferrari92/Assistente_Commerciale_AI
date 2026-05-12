@@ -29,7 +29,7 @@ with st.sidebar:
     api_key = st.text_input("OpenAI API Key", type="password", key="main_api_key")
     if st.button("🗑️ Svuota Modulo"):
         st.session_state.form_data = {k: "" if k != "tipologia" else "telefonata" for k in st.session_state.form_data}
-        st.session_state.form_data["vibes"] = "Positive 👍"
+        st.session_state.form_data["Esito incontro"] = "Positivo 👍"
         st.session_state.audio_summary_done = False
         st.session_state.mic_key_counter += 1 # Reset microfono
         st.rerun()
@@ -98,12 +98,12 @@ st.title("Assistente Commerciale")
 
 st.write("### 🎤 Assistente Rapido")
 if not api_key:
-    st.warning("Inserisci l'API Key per usare la voce.")
+    st.warning("Inserisci l'API Key per usare l'assistente vocale.")
 else:
     # MODIFICA: Usiamo una chiave dinamica (mic_key_counter) per resettare il widget
     audio = mic_recorder(
-        start_prompt="Racconta l'evento per compilare il modulo 🎤", 
-        stop_prompt="Elabora racconto ✨", 
+        start_prompt="🎤 Racconta l'evento ", 
+        stop_prompt="🤓 Elabora l'audio", 
         key=f"mic_{st.session_state.mic_key_counter}"
     )
 
