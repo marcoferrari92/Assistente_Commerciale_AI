@@ -40,7 +40,14 @@ steps = [
 
 def speak(text):
     client = OpenAI(api_key=api_key)
-    response = client.audio.speech.create(model="tts-1", voice="nova", input=text)
+    # Assicuriamoci che non ci siano spazi strani o caratteri speciali
+    clean_text = text.strip() 
+    
+    response = client.audio.speech.create(
+        model="tts-1",
+        voice="nova", # Prova 'nova' o 'shimmer', sono meno "americane"
+        input=clean_text
+    )
     return response.content
 
 def transcribe(audio_bytes):
