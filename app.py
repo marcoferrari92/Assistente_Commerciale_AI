@@ -41,17 +41,30 @@ def speak(text):
 def analyze_report(audio_bytes):
     if not client: return None
     
-    # Trascrizione
+    # Trascrizione Whisper
     audio_file = io.BytesIO(audio_bytes)
     audio_file.name = "audio.mp3"
     transcript = client.audio.transcriptions.create(model="whisper-1", file=audio_file, language="it")
     
-    # Analisi JSON
+    # Analisi JSON con vincolo sulla tipologia
     prompt = """
-    Analizza il rapporto commerciale e restituisci un JSON. 
-    Campi: cliente, tipologia, oggetto, contatto, vibes, note.
-    Se un dato manca, usa null (senza virgolette).
-    Aggiungi un campo 'mancanti' che sia una lista dei nomi dei campi non trovati.
+    Sei un assistente commerciale. Analizza il rapporto e restituisci un JSON.
+    I campi sono: cliente, tipologia, oggetto, contatto, vibes, note.
+
+    REGOLE CRITICHE PER IL CAMPO 'tipologia':
+    - Deve essere SOLO uno di questi tre valori: "telefonata", "email", "visita".
+    - Se l'utente dice "ho chiamato" o "ci siamo sentiti", usa "telefonata".
+    - Se l'utente dice "ho scritto" o "mi ha risposto alla mail", usa "email".
+    - Se l'utente dice "sono andato da loro" o "abbiamo pranzato insieme", usa "visita".
+    - Se non è chiaro, scrivi null.
+
+    REGOLE PER IL CAMPO 'oggetto':
+    - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 6-8 parole.
+    - Esempio: se dice "sono andato da Rossi per il problema dei bulloni", l'oggetto diventa "Discussione risoluzione problematiche fornitura bulloni".
+    - Se non dice nulla di utile per l'oggetto, scrivi null.
+
+    Se un dato manca, usa null.
+    Aggiungi il campo 'mancanti' con la lista dei campi null.
     """
     
     response = client.chat.completions.create(
@@ -63,6 +76,7 @@ def analyze_report(audio_bytes):
         response_format={ "type": "json_object" }
     )
     return json.loads(response.choices[0].message.content)
+    
 
 # --- 5. LOGICA PRINCIPALE ---
 st.title("🎙️ Assistente Vendite Intelligente")
