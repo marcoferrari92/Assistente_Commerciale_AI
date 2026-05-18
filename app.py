@@ -7,6 +7,46 @@ from datetime import datetime
 
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
 
+# --- CONTROLLO ACCESSO MULTI-UTENTE ---
+def login_commerciale():
+    if "user_data" not in st.session_state:
+        st.session_state.user_data = None
+
+    if st.session_state.user_data:
+        return st.session_state.user_data
+
+    st.title("🔒 CRM Aziendale - Login")
+    username = st.text_input("Username (Nome)", key="login_username").lower().strip()
+    password = st.text_input("Password", type="password", key="login_password")
+    
+    if st.button("Accedi", use_container_width=True):
+        if "commerciali" in st.secrets and username in st.secrets["commerciali"]:
+            db_user = st.secrets["commerciali"][username]
+            if password == db_user["password"]:
+                st.session_state.user_data = {"username": username, "email": db_user["email"]}
+                st.rerun()
+            else:
+                st.error("❌ Password errata.")
+        else:
+            st.error("❌ Utente non trovato.")
+    return None
+
+utente_connesso = login_commerciale()
+
+# Se l'utente si è loggato con successo, mostriamo l'applicazione
+if utente_connesso:
+    st.sidebar.write(f"👤 Utente: **{utente_connesso['username'].capitalize()}**")
+    if st.sidebar.button("🚪 Logout"):
+        st.session_state.user_data = None
+        st.rerun()
+
+    # --- INIZIALIZZAZIONE CLIENT OPENAI DA SECRETS ---
+    client = OpenAI(api_key=st.secrets["openai_key"])
+
+
+
+st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
+
 # --- 1. INIZIALIZZAZIONE STATO ---
 if 'form_data' not in st.session_state:
     st.session_state.form_data = {
