@@ -158,44 +158,31 @@ if utente_connesso:
     if not client:
         st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
     else:
-        # 1. BANNER SEMAFORO NATIVI
-        if st.session_state.get("is_processing", False):
-            st.warning("⚠️ ATTENDI: L'AI sta elaborando il report...")
-        else:
-            st.success("🟢 READY")
-
-        # 2. IL WIDGET DEL MICROFONO NATIVO
+        # Il widget del microfono elabora i dati in modo lineare senza forzare rerun intermedio
         audio = mic_recorder(
             start_prompt="🎤 RACCONTA L'EVENTO", 
             stop_prompt="⏹️ ELABORA REPORT", 
             key=f"mic_{st.session_state.mic_key_counter}"
         )
 
-        # 3. SE IL COMMERCIALE CLICCA STOP
         if audio:
-            st.session_state.is_processing = True
-            st.rerun()
-
-    # Intercettiamo il caricamento per elaborare l'audio mantenendo lo stato GIALLO
-    if 'audio' in locals() and audio and st.session_state.get("is_processing", False):
-        with st.spinner("Morpheus sta scrivendo i dati..."):
-            res = analyze_full_report(audio['bytes'])
-            if res:
-                for k in st.session_state.form_data.keys():
-                    if k in res and res[k]: 
-                        if k == "promemoria":
-                            try:
-                                st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
-                            except:
-                                st.session_state.form_data[k] = None
-                        else:
-                            st.session_state.form_data[k] = res[k]
-                
-                # Ripristino pulito dello stato iniziale
-                st.session_state.audio_summary_done = False 
-                st.session_state.is_processing = False
-                st.session_state.mic_key_counter += 1 
-                st.rerun()
+            with st.spinner("Morpheus sta scrivendo i dati..."):
+                res = analyze_full_report(audio['bytes'])
+                if res:
+                    for k in st.session_state.form_data.keys():
+                        if k in res and res[k]: 
+                            if k == "promemoria":
+                                try:
+                                    st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
+                                except:
+                                    st.session_state.form_data[k] = None
+                            else:
+                                st.session_state.form_data[k] = res[k]
+                    
+                    # Reset pulito dei flag per sbloccare l'applicazione
+                    st.session_state.audio_summary_done = False 
+                    st.session_state.mic_key_counter += 1 
+                    st.rerun()
 
     st.divider()
 
