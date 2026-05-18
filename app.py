@@ -225,11 +225,11 @@ if utente_connesso:
             st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
 
     # --- CREAZIONE DELLE TAB PER ORGANIZZARE IL LAYOUT ---
-    tab_dati, tab_allegati = st.tabs(["📝 Dati Evento", "📸 Allegati"])
+    tab_dati, tab_allegati = st.tabs(["📝 Evento", "📸 Allegati"])
 
     # --- TAB 1: DATI DEL FORM EVENTO ---
     with tab_dati:
-        st.write("### 📝 Dati Principali Evento")
+        st.write("### Evento")
 
         # Riga 1: Cliente e Tipologia
         col_r1_1, col_r1_2 = st.columns(2)
@@ -268,7 +268,7 @@ if utente_connesso:
         st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=150)
 
         # --- PIANIFICAZIONE AZIONI FUTURE ---
-        st.write("### 🎯 Azioni Future & Scadenze")
+        st.write("### ⏰ Azioni Future & Scadenze")
         col_next, col_date = st.columns([2, 1])
 
         with col_next:
@@ -295,7 +295,7 @@ if utente_connesso:
 
     # --- TAB 2: ALLEGATI (FOTO E FILE SEPARATI) ---
     with tab_allegati:
-        st.write("### 📸 Documenti & Foto Allegati")
+        #st.write("### 📸 Documenti & Foto Allegati")
         uploaded_files = st.file_uploader(
             "Trascina qui i file o tocca per scattare una foto/selezionare un allegato",
             type=["png", "jpg", "jpeg", "pdf", "docx", "xlsx"],
