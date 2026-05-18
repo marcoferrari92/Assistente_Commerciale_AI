@@ -151,85 +151,55 @@ if utente_connesso:
 
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("🎙️ Imprendo Morpheus")
-    
-    # NUOVO CSS: Penetra l'iframe del custom component senza toccare i bottoni di Streamlit
-    st.markdown("""
-        <style>
-        /* Trova l'iframe del custom component e forza le dimensioni del contenitore */
-        iframe[title="streamlit_mic_recorder.mic_recorder"] {
-            width: 240px !important;
-            height: 240px !important;
-            max-height: 240px !important;
-            max-width: 240px !important;
-            display: block !important;
-            margin: 30px auto !important;
-        }
-
-        /* Colpisce il bottone del microfono ovunque si nasconda dentro il componente custom */
-        [data-testid="stCustomComponentV1"] button,
-        iframe + div button,
-        .element-container iframe + div button {
-            width: 220px !important;
-            height: 220px !important;
-            min-height: 220px !important;
-            max-width: 220px !important;
-            border-radius: 50% !important; /* ROtondo perfetto */
-            font-size: 22px !important;
-            font-weight: bold !important;
-            line-height: 1.3 !important;
-            background-color: #1b5e20 !important; /* Verde Matrix */
-            color: white !important;
-            border: 5px solid #00FF66 !important; /* Neon */
-            box-shadow: 0px 10px 25px rgba(0, 255, 102, 0.4) !important;
-            transition: all 0.2s ease-in-out !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            text-align: center !important;
-            white-space: pre-line !important;
-        }
-        
-        /* Stato attivo (Rosso in registrazione) */
-        [data-testid="stCustomComponentV1"] button:active,
-        [data-testid="stCustomComponentV1"] button:focus {
-            background-color: #b71c1c !important; 
-            border-color: #ff1744 !important;
-            box-shadow: 0px 10px 25px rgba(255, 23, 68, 0.5) !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    st.write("### 🚗 Modalità Guida One-Touch")
-    st.write("Tocca il cerchio per parlare, tocca di nuovo per elaborare.")
+    st.write("### 🎤 Assistente Rapido")
 
     if not client:
         st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
     else:
-        # Avviamo il microfono in modo nativo, il testo usa '\n' per andare a capo nel cerchio
+        # 1. GESTIONE DEGLI STATI COLORATI NATIVI
+        # Controlliamo se l'AI sta elaborando
+        if st.session_state.get("is_processing", False):
+            # STATO GIALLO: Mostra un avviso giallo gigante sopra il microfono
+            st.warning("⚠️ GIALLO: L'AI sta elaborando il report... Attendi.")
+        else:
+            # STATO VERDE: L'app è pronta a ricevere il comando
+            st.success("🟢 VERDE: Sistema pronto. Tocca sotto per parlare.")
+
+        # 2. IL WIDGET DEL MICROFONO (Torna alle dimensioni standard stabili)
         audio = mic_recorder(
-            start_prompt="🔴\nAVVIA\nREPORT", 
-            stop_prompt="⏹️\nELABORA\nREPORT", 
+            start_prompt="🎤 AVVIA REGISTRAZIONE", 
+            stop_prompt="⏹️ STOP (ELABORA)", 
             key=f"mic_{st.session_state.mic_key_counter}"
         )
 
+        # 3. SE IL COMMERCIALE HA PREMUTO STOP
         if audio:
-            with st.spinner("L'AI sta compilando il modulo per te..."):
-                res = analyze_full_report(audio['bytes'])
-                if res:
-                    for k in st.session_state.form_data.keys():
-                        if k in res and res[k]: 
-                            if k == "promemoria":
-                                try:
-                                    st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
-                                except:
-                                    st.session_state.form_data[k] = None
-                            else:
-                                st.session_state.form_data[k] = res[k]
-                    
-                    st.session_state.audio_summary_done = False 
-                    st.session_state.mic_key_counter += 1 
-                    st.rerun()
+            # Attiviamo lo stato giallo di elaborazione
+            st.session_state.is_processing = True
+            st.rerun()
 
+    # Intercettiamo il rerun per fare il lavoro pesante mentre lo stato è GIALLO
+    if 'audio' in locals() and audio and st.session_state.get("is_processing", False):
+        # Il caricamento nativo gira mentre sopra c'è il banner giallo
+        with st.spinner("Morpheus sta scrivendo i dati..."):
+            res = analyze_full_report(audio['bytes'])
+            if res:
+                for k in st.session_state.form_data.keys():
+                    if k in res and res[k]: 
+                        if k == "promemoria":
+                            try:
+                                st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
+                            except:
+                                st.session_state.form_data[k] = None
+                        else:
+                            st.session_state.form_data[k] = res[k]
+                
+                # Finito il lavoro, resettiamo il flag (si toglie il giallo e torna il VERDE)
+                st.session_state.is_processing = False
+                st.session_state.audio_summary_done = False 
+                st.session_state.mic_key_counter += 1 
+                st.rerun()
+                
     st.divider()
 
     # --- 5. IL MODULO FORM ---
