@@ -200,8 +200,6 @@ if utente_connesso:
                 st.session_state.mic_key_counter += 1 
                 st.rerun()
 
-    st.divider()
-
     # --- ELABORAZIONE DATI (QUANDO L'AUDIO È STATO RACCOLTO) ---
     if 'audio' in locals() and audio and st.session_state.get("is_processing", False):
         with st.spinner("Morpheus sta scrivendo i dati..."):
