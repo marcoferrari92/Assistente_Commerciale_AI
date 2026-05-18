@@ -172,7 +172,7 @@ if utente_connesso:
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("🎙️ Imprendo Morpheus")
     st.divider()
-    st.write("### 🎤 Assistente Rapido")
+    st.write("### Assistente Rapido")
 
     if not client:
         st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
