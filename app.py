@@ -149,56 +149,58 @@ if utente_connesso:
         )
         return json.loads(response.choices[0].message.content)
 
+    
     # --- LOGICA INTERFACCIA PRINCIPALE ---
+    
     st.title("🎙️ Imprendo Morpheus")
     st.divider()
-    
-
     st.write("### 🎤 Assistente Rapido")
+
     if not client:
-        st.warning("Assistente vocale NON disponibile! Verifica la chiave API.")
+        st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
     else:
-        audio = None
-
-        # --- GESTIONE DEI 3 STATI COLORATI NATIVI (SENZA CSS) ---
-        
-        # STATO 1: GIALLO (L'AI sta elaborando)
+        # 1. BANNER SEMAFORO NATIVI
         if st.session_state.get("is_processing", False):
+            # STATO GIALLO: Blocco visivo enorme mentre l'AI elabora
             st.warning("⚠️ ATTENDI: L'AI sta elaborando il report...")
-            st.button("⏳ Elaborazione in corso...", disabled=True, use_container_width=True)
-
-        # STATO 2: ROSSO (Il commerciale ha premuto Start e sta parlando)
-        elif st.session_state.get("is_recording", False):
-            st.error("🔴 REGISTRAZIONE IN CORSO...")
-            
-            # Questo microfono mostra solo il pulsante di STOP
-            audio = mic_recorder(
-                start_prompt="⏹️ PREMI PER STOPPARE", # Non verrà visto perché parte già attivo
-                stop_prompt="⏹️ PREMI PER STOPPARE", 
-                key=f"mic_stop_{st.session_state.mic_key_counter}"
-            )
-            
-            # Se ripreme il bottone, interrompe la registrazione
-            if audio:
-                st.session_state.is_recording = False
-                st.session_state.is_processing = True
-                st.rerun()
-
-        # STATO 3: VERDE (Il sistema è a riposo, pronto a partire)
         else:
-            st.success("🟢 READY: Racconta un nuovo evento!")
-            
-            # Questo microfono mostra il pulsante di START
-            audio = mic_recorder(
-                start_prompt="🎤 AVVIA REGISTRAZIONE", 
-                stop_prompt="🎤 AVVIA REGISTRAZIONE", 
-                key=f"mic_start_{st.session_state.mic_key_counter}"
-            )
-            
-            # Appena tocca il pulsante verde, attiviamo subito lo stato ROSSO
-            if audio:
-                st.session_state.is_recording = True
+            # STATO VERDE: Blocco di avvio pronto
+            st.success("🟢 READY. Racconta un nuovo evento!")
+
+        # 2. IL WIDGET DEL MICROFONO NATIIVO (Stabile al 100%)
+        audio = mic_recorder(
+            start_prompt="🎤 RACCONTA L'EVENTO", 
+            stop_prompt="⏹️ ELABORA REPORT", 
+            key=f"mic_{st.session_state.mic_key_counter}"
+        )
+
+        # 3. SE IL COMMERCIALE CLICCA STOP
+        if audio:
+            st.session_state.is_processing = True
+            st.rerun()
+
+    # Intercettiamo il caricamento per elaborare l'audio mantenendo lo stato GIALLO
+    if 'audio' in locals() and audio and st.session_state.get("is_processing", False):
+        with st.spinner("Morpheus sta scrivendo i dati..."):
+            res = analyze_full_report(audio['bytes'])
+            if res:
+                for k in st.session_state.form_data.keys():
+                    if k in res and res[k]: 
+                        if k == "promemoria":
+                            try:
+                                st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
+                            except:
+                                st.session_state.form_data[k] = None
+                        else:
+                            st.session_state.form_data[k] = res[k]
+                
+                # Finito il lavoro resettiamo il flag (Toglie il giallo e torna VERDE)
+                st.session_state.is_processing = False
+                st.session_state.audio_summary_done = False 
+                st.session_state.mic_key_counter += 1 
                 st.rerun()
+
+    st.divider()
 
     # --- ELABORAZIONE DATI (QUANDO L'AUDIO È STATO RACCOLTO) ---
     if 'audio' in locals() and audio and st.session_state.get("is_processing", False):
