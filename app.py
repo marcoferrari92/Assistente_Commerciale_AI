@@ -216,7 +216,8 @@ if utente_connesso:
                     st.session_state.mic_key_counter += 1 
                     st.rerun()
 
-    st.divider()
+    st.write("")
+    st.write("")
 
     # --- FEEDBACK DEI CAMPI MANCANTI ---
     if st.session_state.campi_mancanti:
@@ -268,7 +269,9 @@ if utente_connesso:
         st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=150)
 
         # --- PIANIFICAZIONE AZIONI FUTURE ---
-        st.write("### ⏰ Azioni Future & Scadenze")
+        st.write("")
+        st.write("")
+        st.write("### Azioni Future & Scadenze")
         col_next, col_date = st.columns([2, 1])
 
         with col_next:
