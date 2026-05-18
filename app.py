@@ -167,6 +167,34 @@ if utente_connesso:
             # STATO VERDE: Blocco di avvio pronto
             st.success("🟢 READY")
 
+        # --- TRUCCO CSS ISOLATO E MIRATO PER IL BOTTONE DEL MICROFONO ---
+        st.markdown("""
+            <style>
+            /* Trova il pulsante del microfono e lo trasforma in un bandone gigante */
+            div[data-testid="stCustomComponentV1"] button {
+                width: 100% !important;
+                min-height: 150px !important; /* Altezza massiccia per uso in auto */
+                height: 150px !important;
+                font-size: 26px !important;   /* Testo grande e leggibile */
+                font-weight: bold !important;
+                background-color: #1b5e20 !important; /* Verde Matrix */
+                color: white !important;
+                border: 3px solid #00FF66 !important; /* Bordo neon */
+                border-radius: 15px !important;       /* Angoli leggermente smussati */
+                box-shadow: 0px 8px 16px rgba(0, 255, 102, 0.3) !important;
+                transition: all 0.2s ease-in-out !important;
+            }
+            
+            /* Quando il commerciale ci clicca sopra per registrare, diventa Rosso */
+            div[data-testid="stCustomComponentV1"] button:active,
+            div[data-testid="stCustomComponentV1"] button:focus {
+                background-color: #b71c1c !important; /* Rosso */
+                border-color: #ff1744 !important;
+                box-shadow: 0px 8px 16px rgba(255, 23, 68, 0.4) !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
         # 2. IL WIDGET DEL MICROFONO NATIIVO (Stabile al 100%)
         audio = mic_recorder(
             start_prompt="🎤 RACCONTA L'EVENTO", 
@@ -200,29 +228,8 @@ if utente_connesso:
                 st.session_state.mic_key_counter += 1 
                 st.rerun()
 
-    # --- ELABORAZIONE DATI (QUANDO L'AUDIO È STATO RACCOLTO) ---
-    if 'audio' in locals() and audio and st.session_state.get("is_processing", False):
-        with st.spinner("Morpheus sta scrivendo i dati..."):
-            res = analyze_full_report(audio['bytes'])
-            if res:
-                for k in st.session_state.form_data.keys():
-                    if k in res and res[k]: 
-                        if k == "promemoria":
-                            try:
-                                st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
-                            except:
-                                st.session_state.form_data[k] = None
-                        else:
-                            st.session_state.form_data[k] = res[k]
-                
-                # Reset totale di tutti i flag: si torna al VERDE!
-                st.session_state.is_processing = False
-                st.session_state.is_recording = False
-                st.session_state.audio_summary_done = False 
-                st.session_state.mic_key_counter += 1 
-                st.rerun()
-                
-    st.divider()
+
+    
 
     # --- 5. IL MODULO FORM ---
     st.write("### 📝 Modulo Evento")
