@@ -139,7 +139,7 @@ if utente_connesso:
         return json.loads(response.choices[0].message.content)
 
     # --- 5. LOGICA PRINCIPALE ---
-    st.title("Assistente Commerciale")
+    st.title("Imprendo Morpheous")
 
     st.write("### 🎤 Assistente Rapido")
     
