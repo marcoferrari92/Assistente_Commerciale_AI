@@ -4,7 +4,6 @@ from streamlit_mic_recorder import mic_recorder
 import io
 import json
 from datetime import datetime
-import base64
 
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
@@ -21,9 +20,8 @@ if 'form_data' not in st.session_state:
         "next_step": "",        
         "promemoria": None     
     }
-
-if 'audio_to_play' not in st.session_state:
-    st.session_state.audio_to_play = None
+if 'audio_summary_done' not in st.session_state:
+    st.session_state.audio_summary_done = False
 
 if 'mic_key_counter' not in st.session_state:
     st.session_state.mic_key_counter = 0
@@ -193,39 +191,13 @@ if utente_connesso:
                         else:
                             st.session_state.form_data[k] = res[k]
                 
-                # CREAZIONE AUDIO DI CONFERMA
-                promemoria_str = st.session_state.form_data['promemoria'].strftime('%d/%m/%Y') if st.session_state.form_data['promemoria'] else 'non impostato'
-                testo_riepilogo = (
-                    f"Ricevuto. Ecco il riepilogo completo dell'evento. "
-                    f"Cliente: {st.session_state.form_data['cliente']}. "
-                    f"Oggetto: {st.session_state.form_data['oggetto'] if st.session_state.form_data['oggetto'] else 'non impostato'}. "
-                    f"Prossimo passo: {st.session_state.form_data['next_step'] if st.session_state.form_data['next_step'] else 'nessuno'}. "
-                    f"Data di promemoria: {promemoria_str}."
-                )
-                
-                # Otteniamo i byte dell'audio
-                audio_bytes_data = speak(testo_riepilogo)
-                if audio_bytes_data:
-                    # Lo codifichiamo in Base64 per passarlo all'HTML protetto ed evitare i loop di Streamlit
-                    b64_audio = base64.b64encode(audio_bytes_data).decode()
-                    st.session_state.audio_to_play = f"data:audio/mp3;base64,{b64_audio}"
-                
-                # Reset dei flag di elaborazione
+                # Ripristino pulito dello stato iniziale
+                st.session_state.audio_summary_done = False 
                 st.session_state.is_processing = False
                 st.session_state.mic_key_counter += 1 
                 st.rerun()
 
     st.divider()
-
-    # --- RIPRODUZIONE AUDIO ISOLATA (Bypassa i loop del server) ---
-    if st.session_state.audio_to_play:
-        # Iniettiamo un micro-componente HTML invisibile che suona la traccia e si autodistrugge
-        st.components.v1.html(
-            f'<audio autoplay src="{st.session_state.audio_to_play}"></audio>',
-            height=0,
-            width=0
-        )
-        st.session_state.audio_to_play = None # Pulizia istantanea dello stato globale
 
     # --- 5. IL MODULO FORM ---
     st.write("### 📝 Modulo Evento")
@@ -272,6 +244,25 @@ if utente_connesso:
             value=current_date_val if current_date_val else datetime.now().date()
         )
         st.session_state.form_data["promemoria"] = chosen_date
+
+    # --- 6. RIASSUNTO VOCALE DI CONFERMA ---
+    if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
+        d = st.session_state.form_data
+        promemoria_str = d['promemoria'].strftime('%d/%m/%Y') if d['promemoria'] else 'non impostato'
+        
+        testo_riepilogo = (
+            f"Ricevuto. Ecco il riepilogo completo dell'evento. "
+            f"Cliente: {d['cliente']}. "
+            f"Oggetto: {d['oggetto']}. "
+            f"Prossimo passo: {d['next_step'] if d['next_step'] else 'nessuno specificato'}. "
+            f"Data di promemoria: {promemoria_str}."
+        )
+        
+        with st.spinner("L'AI sta leggendo il riepilogo finale..."):
+            audio_msg = speak(testo_riepilogo)
+            if audio_msg:
+                st.audio(audio_msg, autoplay=True)
+                st.session_state.audio_summary_done = True
 
     # --- 7. SALVATAGGIO ---
     st.divider()
