@@ -5,47 +5,29 @@ import io
 import json
 from datetime import datetime
 
-# Configurazione di pagina (Eseguita una sola volta all'inizio)
+# --- 1. CONFIGURAZIONE PAGINA (Eseguita una sola volta all'inizio) ---
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
 
-st.write("### 🚗 Modalità Guida (One-Touch)")
-st.write("Tocca il mega-pulsante sotto per iniziare a parlare. Toccalo di nuovo per elaborare.")
-
-# Iniezione di CSS per trasformare il widget del microfono in un pulsante gigante
-st.markdown("""
-    <style>
-    /* Individua il pulsante del microfono di Streamlit e lo stravolge */
-    div[data-testid="stMarkdownContainer"] + div button {
-        width: 100% !important;
-        min-height: 180px !important; /* Altezza massiccia per il touch */
-        font-size: 26px !important;    /* Testo enorme leggibile al volo */
-        font-weight: bold !important;
-        background-color: #2e7d32 !important; /* Verde scuro ben visibile */
-        color: white !important;
-        border-radius: 20px !important; /* Angoli arrotondati stile app mobile */
-        border: 4px solid #00FF66 !important; /* Bordo neon stile Matrix */
-        box-shadow: 0px 8px 15px rgba(0, 255, 102, 0.3) !important;
-        transition: all 0.3s ease 0s;
+# --- 2. INIZIALIZZAZIONE STATO GLOBALE ---
+if 'form_data' not in st.session_state:
+    st.session_state.form_data = {
+        "cliente": "",
+        "tipologia": "telefonata",
+        "oggetto": "",
+        "contatto": "",
+        "vibes": "Positive 👍",
+        "note": "",
+        "next_step": "",        
+        "promemoria": None     
     }
-    
-    /* Cambia colore quando il pulsante è attivo (mentre registra) */
-    div[data-testid="stMarkdownContainer"] + div button:active, 
-    div[data-testid="stMarkdownContainer"] + div button:focus {
-        background-color: #d32f2f !important; /* Diventa Rosso per indicare il "REC" */
-        border-color: #ff1744 !important;
-        box-shadow: 0px 8px 15px rgba(255, 23, 68, 0.5) !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+if 'audio_summary_done' not in st.session_state:
+    st.session_state.audio_summary_done = False
 
-# Il widget del microfono ora occuperà tutto lo spazio visivo impostato dal CSS
-audio = mic_recorder(
-    start_prompt="🔴 AVVIA REPORT (TOCCA E PARLA)", 
-    stop_prompt="⏹️ FINITO! ELABORA REPORT", 
-    key=f"mic_{st.session_state.mic_key_counter}"
-)
+if 'mic_key_counter' not in st.session_state:
+    st.session_state.mic_key_counter = 0
 
-# --- CONTROLLO ACCESSO MULTI-UTENTE ---
+
+# --- 3. CONTROLLO ACCESSO MULTI-UTENTE (IMPRENDO MORPHEUS) ---
 def login_commerciale():
     if "user_data" not in st.session_state:
         st.session_state.user_data = None
@@ -53,12 +35,13 @@ def login_commerciale():
     if st.session_state.user_data:
         return st.session_state.user_data
 
-    st.title("Imprendo Morpheous")
-    st.write("Il tuo Assistente AI")
+    st.title("🔒 Imprendo Morpheus")
+    st.write("### Il tuo Assistente AI")
     st.write(r"""
     *"Pillola blu, fine della storia: domani ti sveglierai in camera tua, e crederai a quello che vorrai. 
     Pillola rossa, resti nel Paese delle Meraviglie, e vedrai quant'è profonda la tana del Bianconiglio. 
     Ti sto offrendo solo la verità. Ricordalo. Niente di più"*""")
+    
     username = st.text_input("Username (Nome)", key="login_username").lower().strip()
     password = st.text_input("Password", type="password", key="login_password")
     
@@ -76,7 +59,7 @@ def login_commerciale():
 
 utente_connesso = login_commerciale()
 
-# Mostriamo il resto dell'applicazione solo se l'utente è connesso
+# --- 4. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
 if utente_connesso:
     st.sidebar.write(f"👤 Utente: **{utente_connesso['username'].capitalize()}**")
     if st.sidebar.button("🚪 Logout"):
@@ -84,32 +67,13 @@ if utente_connesso:
         st.rerun()
 
     # --- INIZIALIZZAZIONE CLIENT OPENAI DA SECRETS ---
-    # Gestione sicura nel caso in cui la chiave non sia ancora presente nei secrets di Streamlit
     if "openai_key" in st.secrets:
         client = OpenAI(api_key=st.secrets["openai_key"])
     else:
-        st.error("⚠️ Chiave API 'openai_key' non trovata!")
+        st.error("⚠️ Chiave API 'openai_key' non trovata nei Secrets!")
         client = None
 
-    # --- 1. INIZIALIZZAZIONE STATO DEL MODULO ---
-    if 'form_data' not in st.session_state:
-        st.session_state.form_data = {
-            "cliente": "",
-            "tipologia": "telefonata",
-            "oggetto": "",
-            "contatto": "",
-            "vibes": "Positive 👍",
-            "note": "",
-            "next_step": "",       
-            "promemoria": None     
-        }
-    if 'audio_summary_done' not in st.session_state:
-        st.session_state.audio_summary_done = False
-
-    if 'mic_key_counter' not in st.session_state:
-        st.session_state.mic_key_counter = 0
-
-    # --- 4. FUNZIONI ---
+    # --- FUNZIONI ---
     def speak(text):
         if not client: return None
         try:
@@ -127,6 +91,7 @@ if utente_connesso:
         
         current_date_str = datetime.now().strftime("%Y-%m-%d")
         
+        # PROMPT ORIGINALE LASCIATO ESATTAMENTE INVARIATO
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
@@ -175,18 +140,44 @@ if utente_connesso:
         )
         return json.loads(response.choices[0].message.content)
 
-    # --- 5. LOGICA PRINCIPALE ---
-    st.title("Imprendo Morpheous")
-
+    # --- LOGICA INTERFACCIA PRINCIPALE ---
+    st.title("🎙️ Imprendo Morpheus")
     st.write("### 🎤 Assistente Rapido")
-    
-    # CORREZIONE: Ora controlliamo se il client OpenAI è attivo, senza usare la vecchia variabile api_key
+
+    # Iniezione del CSS per il mega pulsante (inserito dentro la sessione autenticata)
+    st.markdown("""
+        <style>
+        /* Individua il pulsante del microfono di Streamlit e lo stravolge */
+        div[data-testid="stMarkdownContainer"] + div button {
+            width: 100% !important;
+            min-height: 180px !important; /* Altezza massiccia per il touch */
+            font-size: 26px !important;    /* Testo enorme leggibile al volo */
+            font-weight: bold !important;
+            background-color: #2e7d32 !important; /* Verde scuro ben visibile */
+            color: white !important;
+            border-radius: 20px !important; /* Angoli arrotondati stile app mobile */
+            border: 4px solid #00FF66 !important; /* Bordo neon stile Matrix */
+            box-shadow: 0px 8px 15px rgba(0, 255, 102, 0.3) !important;
+            transition: all 0.3s ease 0s;
+        }
+        
+        /* Cambia colore quando il pulsante è attivo (mentre registra) */
+        div[data-testid="stMarkdownContainer"] + div button:active, 
+        div[data-testid="stMarkdownContainer"] + div button:focus {
+            background-color: #d32f2f !important; /* Diventa Rosso per indicare il "REC" */
+            border-color: #ff1744 !important;
+            box-shadow: 0px 8px 15px rgba(255, 23, 68, 0.5) !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     if not client:
         st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
     else:
+        # Il widget del microfono gigante
         audio = mic_recorder(
-            start_prompt="🎤 Racconta l'evento ", 
-            stop_prompt="🤓 Elabora l'audio", 
+            start_prompt="🔴 AVVIA REPORT (TOCCA E PARLA)", 
+            stop_prompt="⏹️ FINITO! ELABORA REPORT", 
             key=f"mic_{st.session_state.mic_key_counter}"
         )
 
@@ -210,7 +201,7 @@ if utente_connesso:
 
     st.divider()
 
-    # --- 5. IL MODULO ---
+    # --- 5. IL MODULO FORM ---
     st.write("### 📝 Modulo Evento")
 
     col1, col2 = st.columns(2)
@@ -237,7 +228,7 @@ if utente_connesso:
 
     st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=150)
 
-    # --- NUOVA SEZIONE: PIANIFICAZIONE AZIONI FUTURE ---
+    # --- PIANIFICAZIONE AZIONI FUTURE ---
     st.write("### 🎯 Azioni Future & Scadenze")
     col_next, col_date = st.columns([2, 1])
 
