@@ -2,3 +2,4 @@ streamlit
 openai
 streamlit-mic-recorder
 python-dotenv
+O365
