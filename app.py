@@ -170,7 +170,7 @@ if utente_connesso:
         return json.loads(response.choices[0].message.content)
     
     # --- LOGICA INTERFACCIA PRINCIPALE ---
-    st.title("🎙️ Imprendo Morpheus")
+    st.title("Imprendo Morpheus")
     st.divider()
     st.write("### Assistente Vocale")
     st.write("")
