@@ -173,6 +173,7 @@ if utente_connesso:
     st.title("🎙️ Imprendo Morpheus")
     st.divider()
     st.write("### Assistente Vocale")
+    st.write("")
 
     if not client:
         st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
@@ -229,6 +230,7 @@ if utente_connesso:
     tab_dati, tab_allegati = st.tabs(["📝 Evento", "📸 Allegati"])
 
     # --- TAB 1: DATI DEL FORM EVENTO ---
+    st.write("")
     with tab_dati:
         st.write("### Evento")
 
