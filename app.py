@@ -144,29 +144,32 @@ if utente_connesso:
     st.title("🎙️ Imprendo Morpheus")
     st.write("### 🎤 Assistente Rapido")
 
-    # Iniezione del CSS per il mega pulsante (inserito dentro la sessione autenticata)
+    # NUOVO CSS POTENZIATO: Forza le dimensioni su tutti i tag interni del widget
     st.markdown("""
         <style>
-        /* Individua il pulsante del microfono di Streamlit e lo stravolge */
-        div[data-testid="stMarkdownContainer"] + div button {
+        /* Aggancia il tag che racchiude il microfono e bombarda di stili qualsiasi bottone interno */
+        div button[id^="stMicRecorder"], 
+        div.element-container iframe + div button,
+        .stButton > button, 
+        div[data-testid="stVerticalBlock"] div button {
             width: 100% !important;
-            min-height: 180px !important; /* Altezza massiccia per il touch */
-            font-size: 26px !important;    /* Testo enorme leggibile al volo */
+            min-height: 180px !important; /* Altezza massiccia per uso in auto */
+            height: 180px !important;
+            font-size: 24px !important;    /* Testo enorme */
             font-weight: bold !important;
-            background-color: #2e7d32 !important; /* Verde scuro ben visibile */
+            background-color: #2e7d32 !important; /* Verde Matrix */
             color: white !important;
-            border-radius: 20px !important; /* Angoli arrotondati stile app mobile */
-            border: 4px solid #00FF66 !important; /* Bordo neon stile Matrix */
-            box-shadow: 0px 8px 15px rgba(0, 255, 102, 0.3) !important;
-            transition: all 0.3s ease 0s;
+            border-radius: 25px !important; 
+            border: 4px solid #00FF66 !important; 
+            box-shadow: 0px 10px 20px rgba(0, 255, 102, 0.4) !important;
+            display: block !important;
         }
         
-        /* Cambia colore quando il pulsante è attivo (mentre registra) */
-        div[data-testid="stMarkdownContainer"] + div button:active, 
-        div[data-testid="stMarkdownContainer"] + div button:focus {
-            background-color: #d32f2f !important; /* Diventa Rosso per indicare il "REC" */
+        /* Forza il colore rosso quando è in registrazione */
+        div button[id^="stMicRecorder"]:active,
+        .stButton > button:active {
+            background-color: #d32f2f !important; /* Rosso Stop */
             border-color: #ff1744 !important;
-            box-shadow: 0px 8px 15px rgba(255, 23, 68, 0.5) !important;
         }
         </style>
     """, unsafe_allow_html=True)
