@@ -144,32 +144,53 @@ if utente_connesso:
     st.title("🎙️ Imprendo Morpheus")
     st.write("### 🎤 Assistente Rapido")
 
-    # NUOVO CSS POTENZIATO: Forza le dimensioni su tutti i tag interni del widget
+    # CSS SELETTIVO: Colpisce SOLO il microfono e lascia stare il resto
     st.markdown("""
         <style>
-        /* Aggancia il tag che racchiude il microfono e bombarda di stili qualsiasi bottone interno */
-        div button[id^="stMicRecorder"], 
-        div.element-container iframe + div button,
-        .stButton > button, 
-        div[data-testid="stVerticalBlock"] div button {
+        /* 1. AGGANCIA E MODIFICA SOLO IL PULSANTE DEL MICROFONO */
+        div[data-testid="stCustomComponentV1"] button,
+        div[class*="stMicRecorder"] button,
+        .element-container iframe + div button {
             width: 100% !important;
-            min-height: 180px !important; /* Altezza massiccia per uso in auto */
+            min-height: 180px !important; /* Altezza massiccia per l'auto */
             height: 180px !important;
-            font-size: 24px !important;    /* Testo enorme */
+            font-size: 26px !important;    /* Testo gigante */
             font-weight: bold !important;
-            background-color: #2e7d32 !important; /* Verde Matrix */
+            background-color: #2e7d32 !important; /* Verde scuro */
             color: white !important;
-            border-radius: 25px !important; 
-            border: 4px solid #00FF66 !important; 
-            box-shadow: 0px 10px 20px rgba(0, 255, 102, 0.4) !important;
+            border-radius: 20px !important; 
+            border: 4px solid #00FF66 !important; /* Bordo neon */
+            box-shadow: 0px 8px 15px rgba(0, 255, 102, 0.3) !important;
+            transition: all 0.3s ease-in-out !important;
             display: block !important;
         }
         
-        /* Forza il colore rosso quando è in registrazione */
-        div button[id^="stMicRecorder"]:active,
-        .stButton > button:active {
-            background-color: #d32f2f !important; /* Rosso Stop */
+        /* Forza il colore rosso sul pulsante del microfono quando è attivo */
+        div[data-testid="stCustomComponentV1"] button:active,
+        div[data-testid="stCustomComponentV1"] button:focus {
+            background-color: #d32f2f !important; /* Rosso Matrix */
             border-color: #ff1744 !important;
+            box-shadow: 0px 8px 15px rgba(255, 23, 68, 0.5) !important;
+        }
+
+        /* 2. PROTEGGIAMO GLI ALTRI PULSANTI (PULIZIA) */
+        /* Resetta il pulsante della sidebar e del salva per non farli influenzare */
+        .stSidebar button, .stButton > button:not(div[data-testid="stCustomComponentV1"] button) {
+            width: auto !important;
+            min-height: unset !important;
+            height: auto !important;
+            font-size: inherit !important;
+            font-weight: normal !important;
+            background-color: transparent !important;
+            color: inherit !important;
+            border-radius: inherit !important;
+            border: 1px solid rgba(49, 51, 63, 0.2) !important;
+            box-shadow: none !important;
+        }
+        
+        /* Mantiene il pulsante di salvataggio largo a tutto schermo come avevi chiesto prima, ma con lo stile pulito */
+        div[data-testid="element-container"] .stButton button[data-testid="baseButton-primary"] {
+            width: 100% !important;
         }
         </style>
     """, unsafe_allow_html=True)
