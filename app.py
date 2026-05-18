@@ -15,10 +15,11 @@ if 'form_data' not in st.session_state:
         "tipologia": "telefonata",
         "oggetto": "",
         "contatto": "",
-        "vibes": None,  # Inizializzato a None per intercettare il null iniziale
+        "vibes": None,  
         "note": "",
         "next_step": "",        
-        "promemoria": None     
+        "promemoria": None,
+        "orario_promemoria": None  # Nuovo campo specifico per l'orario del calendario
     }
 if 'campi_mancanti' not in st.session_state:
     st.session_state.campi_mancanti = []
@@ -104,10 +105,11 @@ if utente_connesso:
         
         current_date_str = datetime.now().strftime("%Y-%m-%d")
         
+        # PROMPT AGGIORNATO: Ora estrae anche l'orario convertendolo in formato standard HH:MM
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
-        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria.
+        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria.
 
         REGOLE PER IL CAMPO "contatto"
         - Inserisce nome e cognome se noti e tra parentesi l'ufficio o l'area aziendale del contatto.
@@ -144,6 +146,15 @@ if utente_connesso:
         - Sapendo che OGGI è il {current_date_str}, converti espressioni temporali (es. "domani", "prossima settimana", "il 25 maggio") nel formato standard YYYY-MM-DD.
         - CRITICO: Se non viene specificata alcuna data o periodo di tempo, scrivi null.
 
+        REGOLE PER IL CAMPO 'orario_promemoria':
+        - Identifica se l'utente specifica un momento della giornata o un orario per il promemoria e convertilo nel formato standard HH:MM:
+          * "mattina" o "in mattinata" -> "09:00"
+          * "pranzo" o "ora di pranzo" -> "13:00"
+          * "pomeriggio" -> "15:30"
+          * "sera" o "tardo pomeriggio" -> "18:00"
+          * Se dice un orario specifico (es. "alle 11", "alle 14:30"), usa esattamente quell'orario ("11:00", "14:30").
+        - CRITICO: Se l'utente specifica una data per il promemoria ma NON dice nessun orario o momento della giornata, assegna il valore predefinito "09:00". Se non c'è nemmeno il promemoria, scrivi null.
+
         Se un dato manca, usa null.
         Aggiungi il campo 'mancanti' con la lista dei campi null.
         """
@@ -176,15 +187,12 @@ if utente_connesso:
             with st.spinner("Morpheus sta scrivendo i dati..."):
                 res = analyze_full_report(audio['bytes'])
                 if res:
-                    # Salviamo la lista dei campi rilevati come null dall'AI
                     st.session_state.campi_mancanti = res.get("mancanti", [])
                     
                     for k in st.session_state.form_data.keys():
                         if k in res:
-                            # CORREZIONE CRITICA: Se il valore nel JSON è nullo o vuoto, 
-                            # lo forziamo esplicitamente a None/stringa vuota nello stato
                             if res[k] is None:
-                                if k == "promemoria" or k == "vibes":
+                                if k == "promemoria" or k == "vibes" or k == "orario_promemoria":
                                     st.session_state.form_data[k] = None
                                 else:
                                     st.session_state.form_data[k] = ""
@@ -205,9 +213,9 @@ if utente_connesso:
 
     # --- FEEDBACK DEI CAMPI MANCANTI (ALERT AGGIUNTIVO) ---
     if st.session_state.campi_mancanti:
-        # Puliamo i nomi dei campi per renderli leggibili all'utente
-        nomi_puliti = [c.replace("_", " ").capitalize() for c in st.session_state.campi_mancanti]
-        st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
+        nomi_puliti = [c.replace("_", " ").capitalize() for c in st.session_state.campi_mancanti if c != "orario_promemoria"]
+        if nomi_puliti:
+            st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
 
     # --- 5. IL MODULO FORM ---
     st.write("### 📝 Modulo Evento")
@@ -220,15 +228,13 @@ if utente_connesso:
         st.write("**Esito (Vibes):**")
         v_val = st.session_state.form_data["vibes"]
         
-        # Gestione dell'indice del Radio Button adattata per supportare l'assenza di selezione (null)
         if v_val == "Positivo 👍":
             v_idx = 0
         elif v_val == "Negativo 👎":
             v_idx = 1
         else:
-            v_idx = None # Nessuna pre-selezione se l'AI ha risposto null
+            v_idx = None
         
-        # Se v_idx è None, mostriamo il widget senza una scelta attiva iniziale
         v_scelta = st.radio(
             "Esito evento", ["Positivo 👍", "Negativo 👎"], 
             index=v_idx, horizontal=True, label_visibility="collapsed"
@@ -263,14 +269,19 @@ if utente_connesso:
             value=current_date_val if current_date_val else datetime.now().date()
         )
         st.session_state.form_data["promemoria"] = chosen_date
+        
+        # Mostriamo l'orario estratto in un campo di testo (così è visibile e modificabile)
+        current_time_val = st.session_state.form_data["orario_promemoria"] if st.session_state.form_data["orario_promemoria"] else ""
+        chosen_time = st.text_input("Orario Specifico (HH:MM)", value=current_time_val, placeholder="Es. 09:00 o 15:30")
+        st.session_state.form_data["orario_promemoria"] = chosen_time if chosen_time else None
 
     # --- 6. RIASSUNTO VOCALE DI CONFERMA GENERATO DA AI ---
     if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
         d = st.session_state.form_data
         promemoria_str = d['promemoria'].strftime('%d/%m/%Y') if d['promemoria'] else 'non impostato'
+        orario_str = d['orario_promemoria'] if d['orario_promemoria'] else 'non specificato'
         
         with st.spinner("Morpheus sta preparando il riepilogo vocale..."):
-            # Passiamo TUTTI i dati a gpt-4o, ora inclusi contatto e tipologia
             prompt_riepilogo = f"""
             Sei Morpheus, l'assistente virtuale del commerciale. 
             Genera un breve discorso di conferma (massimo 3-4 frasi) in modo naturale, fluido e colloquiale ma professionale.
@@ -282,14 +293,15 @@ if utente_connesso:
             - Esito dell'incontro (Vibes): {d['vibes'] if d['vibes'] else 'non specificato'}
             - Note e dettagli rilevanti: {d['note']}
             - Prossimo Step: {d['next_step'] if d['next_step'] else 'nessuno'}
-            - Scadenza/Promemoria: {promemoria_str}
+            - Data Promemoria: {promemoria_str}
+            - Orario Rilevato per Calendario: {orario_str}
             
             REGOLE DI TONO E STRUTTURA:
             - Non fare un elenco della spesa. Il discorso deve essere fluido e continuo.
-            - Specifica subito la tipologia di evento e con chi hai parlato (es. "Ho registrato la telefonata con Mario Rossi dell'ufficio acquisti per il cliente X...").
-            - Se l'esito è "Positivo 👍", usa un tono soddisfatto.
-            - Se l'esito è "Negativo 👎", usa un tono pragmatico e di supporto.
-            - Riassumi o cita brevemente il fulcro delle note per far capire che hai memorizzato i dettagli tecnici.
+            - Specifica subito la tipologia di evento e con chi hai parlato.
+            - Se l'esito è "Positivo 👍", usa un tono soddisfatto. Se è "Negativo 👎", usa un tono pragmatico.
+            - Riassumi brevemente il fulcro delle note.
+            - COMUNICA L'ORARIO: Nel riassunto, specifica l'orario esatto che hai assegnato per il calendario (es. "...e ho impostato il promemoria per il {promemoria_str} alle ore {orario_str}"). Rendi la frase naturale.
             - Chiudi dicendo che se è tutto corretto si può procedere con il salvataggio.
             - Non usare elenchi puntati, numeri o asterischi, scrivi solo testo liscio da leggere direttamente.
             """
@@ -301,7 +313,6 @@ if utente_connesso:
                 )
                 testo_fluido = response_testo.choices[0].message.content
                 
-                # Passiamo il testo personalizzato e naturale al modello TTS (Text-to-Speech)
                 audio_msg = speak(testo_fluido)
                 if audio_msg:
                     st.audio(audio_msg, autoplay=True)
@@ -320,6 +331,4 @@ if utente_connesso:
             final_data["promemoria"] = final_data["promemoria"].strftime("%Y-%m-%d")
             
         st.write("Dati inviati:", final_data)
-        
-        # Pulizia della lista errori dopo il salvataggio andato a buon fine
         st.session_state.campi_mancanti = []
