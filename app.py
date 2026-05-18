@@ -142,41 +142,43 @@ if utente_connesso:
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("🎙️ Imprendo Morpheus")
     
-    # 1. Stile CSS blindato per il pulsante rotondo centrale
+    # CSS MIRATO PER IL COMPONENTE DEL MICROFONO
     st.markdown("""
         <style>
-        /* Centra il contenitore del microfono nella pagina */
-        #blocco-mic-auto {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 40px auto;
-            width: 100%;
+        /* Trova l'iframe del componente mic_recorder, centra il suo div interno e trasforma il pulsante in un cerchio */
+        div[data-testid="stCustomComponentV1"] {
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            margin: 30px auto !important;
+            width: 100% !important;
         }
-        
-        #blocco-mic-auto div button {
-            width: 220px !important;
-            height: 220px !important;
-            min-height: 220px !important;
-            max-width: 220px !important;
+
+        div[data-testid="stCustomComponentV1"] button {
+            width: 200px !important;
+            height: 200px !important;
+            min-height: 200px !important;
+            max-width: 200px !important;
             border-radius: 50% !important; /* Lo rende perfettamente rotondo */
-            font-size: 22px !important;
+            font-size: 20px !important;
             font-weight: bold !important;
-            line-height: 1.3 !important;
-            background-color: #1b5e20 !important; /* Verde Matrix Scuro */
+            line-height: 1.4 !important;
+            background-color: #1b5e20 !important; /* Verde Matrix */
             color: white !important;
             border: 5px solid #00FF66 !important; /* Cerchio neon esterno */
             box-shadow: 0px 10px 25px rgba(0, 255, 102, 0.4) !important;
             transition: all 0.2s ease-in-out !important;
-            cursor: pointer;
-            white-space: normal !important; /* Permette al testo di andare a capo */
-            word-wrap: break-word !important;
+            white-space: pre-line !important; /* Rispetta i ritorni a capo (\n) nel testo */
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            text-align: center !important;
         }
         
-        /* Quando il pulsante rotondo viene cliccato o è in registrazione */
-        #blocco-mic-auto div button:active,
-        #blocco-mic-auto div button:focus {
-            background-color: #b71c1c !important; /* Diventa Rosso */
+        /* Stato attivo / Registrazione in corso */
+        div[data-testid="stCustomComponentV1"] button:active,
+        div[data-testid="stCustomComponentV1"] button:focus {
+            background-color: #b71c1c !important; /* Rosso Matrix */
             border-color: #ff1744 !important;
             box-shadow: 0px 10px 25px rgba(255, 23, 68, 0.5) !important;
         }
@@ -189,14 +191,12 @@ if utente_connesso:
     if not client:
         st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
     else:
-        # 2. Inseriamo il microfono dentro un contenitore HTML con ID personalizzato per isolarlo dal resto del foglio CSS
-        st.markdown('<div id="blocco-mic-auto">', unsafe_allow_html=True)
+        # Avviamo il microfono in modo nativo, il testo usa '\n' per andare a capo nel cerchio
         audio = mic_recorder(
             start_prompt="🔴\nAVVIA\nREPORT", 
             stop_prompt="⏹️\nELABORA\nREPORT", 
             key=f"mic_{st.session_state.mic_key_counter}"
         )
-        st.markdown('</div>', unsafe_allow_html=True)
 
         if audio:
             with st.spinner("L'AI sta compilando il modulo per te..."):
@@ -218,7 +218,7 @@ if utente_connesso:
 
     st.divider()
 
-    # --- 5. IL MODULO FORM (Tutti i pulsanti qui restano perfettamente originali) ---
+    # --- 5. IL MODULO FORM ---
     st.write("### 📝 Modulo Evento")
 
     col1, col2 = st.columns(2)
@@ -272,14 +272,9 @@ if utente_connesso:
         testo_riepilogo = (
             f"Ricevuto. Ecco il riepilogo completo dell'evento. "
             f"Cliente: {d['cliente']}. "
-            f"Contatto: {d['contatto'] if d['contatto'] else 'non specificato'}. "
-            f"Tipologia: {d['tipologia']}. "
             f"Oggetto: {d['oggetto']}. "
-            f"Note: {d['note']}. "
-            f"Esito dell'incontro: {d['vibes']}. "
             f"Prossimo passo: {d['next_step'] if d['next_step'] else 'nessuno specificato'}. "
-            f"Data di promemoria: {promemoria_str}. "
-            f"Se è tutto corretto, procedi pure con il salvataggio."
+            f"Data di promemoria: {promemoria_str}."
         )
         
         with st.spinner("L'AI sta leggendo il riepilogo finale..."):
