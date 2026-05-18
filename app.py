@@ -300,6 +300,8 @@ if utente_connesso:
 
     # --- TAB 2: ALLEGATI (FOTO E FILE SEPARATI) ---
     with tab_allegati:
+        st.write("")
+        st.write("")
         #st.write("### 📸 Documenti & Foto Allegati")
         uploaded_files = st.file_uploader(
             "Trascina qui i file o tocca per scattare una foto/selezionare un allegato",
