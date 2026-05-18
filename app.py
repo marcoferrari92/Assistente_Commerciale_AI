@@ -115,12 +115,18 @@ if utente_connesso:
         - Se l'utente dice "ho chiamato" o "ci siamo sentiti", usa "telefonata".
         - Se l'utente dice "ho scritto" o "mi ha risposto alla mail", usa "email".
         - Se l'utente dice "sono andato da loro" o "abbiamo pranzato insieme", usa "visita".
-        - Se non è chiaro, scrivi null.
+        - CRITICO: Se non è chiaro, scrivi null.
 
         REGOLE PER IL CAMPO 'oggetto':
         - Inserisci solo il motivo che ha generato l'evento. 
         - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 10 parole.
-        - Se non dice nulla di utile per l'oggetto, scrivi null.
+        - CRITICO: Se non dice nulla di utile per l'oggetto, scrivi null.
+
+        REGOLE PER IL CAMPO 'vibes':
+        - Analizza il tono di voce e le parole del commerciale per capire l'esito dell'incontro o della telefonata.
+        - Se l'incontro è andato bene, c'è interesse, o l'accordo è positivo, scrivi ESATTAMENTE "Positivo 👍".
+        - Se ci sono stati problemi, lamentele, esito negativo o chiusura, scrivi ESATTAMENTE "Negativo 👎".
+        - CRITICO: Se l'utente non esprime un'opinione chiara, se il tono è neutro o se non riesci a capire l'esito dal racconto, scrivi null. Non inventare o ipotizzare.
 
         REGOLE PER LE NOTE:
         - Inserisci le impressioni del commerciale sull'oggetto dell'evento.
@@ -128,12 +134,12 @@ if utente_connesso:
         
         REGOLE PER IL CAMPO 'next_step':
         - Identifica l'azione futura concordata o pianificata (es. "Inviare preventivo", "Richiamare per conferma", "Fissare demo").
-        - Se non viene menzionata nessuna azione futura, scrivi null.
+        - CRITICO: Se non viene menzionata nessuna azione futura, scrivi null.
         
         REGOLE PER IL CAMPO 'promemoria':
         - Identifica la data in cui il commerciale desidera essere avvisato o in cui è previsto il next step.
         - Sapendo che OGGI è il {current_date_str}, converti espressioni temporali (es. "domani", "prossima settimana", "il 25 maggio") nel formato standard YYYY-MM-DD.
-        - Se non viene specificata alcuna data o periodo di tempo, scrivi null.
+        - CRITICO: Se non viene specificata alcuna data o periodo di tempo, scrivi null.
 
         Se un dato manca, usa null.
         Aggiungi il campo 'mancanti' con la lista dei campi null.
@@ -148,7 +154,6 @@ if utente_connesso:
             response_format={ "type": "json_object" }
         )
         return json.loads(response.choices[0].message.content)
-
     
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("🎙️ Imprendo Morpheus")
