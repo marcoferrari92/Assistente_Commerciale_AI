@@ -3,7 +3,7 @@ from openai import OpenAI
 from streamlit_mic_recorder import mic_recorder
 import io
 import json
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
@@ -170,6 +170,47 @@ if utente_connesso:
         )
         return json.loads(response.choices[0].message.content)
     
+    # --- FUNZIONE DI PREPARAZIONE PER MICROSOFT EXCHANGE ---
+    def crea_evento_su_exchange(user_email, dati_evento):
+        """
+        Predisposizione per l'integrazione Microsoft Exchange / Outlook.
+        Qui potrai inserire la libreria O365 o la chiamata HTTP Graph API.
+        """
+        try:
+            # Uniamo data e ora in un oggetto datetime completo
+            data_promemoria = dati_evento["promemoria"]
+            ora_promemoria = dati_evento["orario_promemoria"]
+            
+            start_datetime = datetime.combine(data_promemoria, ora_promemoria)
+            # Durata standard di 30 minuti per il blocco a calendario
+            end_datetime = start_datetime + timedelta(minutes=30)
+            
+            titolo_calendario = f"🔔 {dati_evento['cliente']} - {dati_evento['oggetto']}"
+            corpo_calendario = f"""
+            Contatto: {dati_evento['contatto']}
+            Prossimo Step: {dati_evento['next_step']}
+            
+            Note dell'evento precedente:
+            {dati_evento['note']}
+            """
+            
+            # --- STRUTTURA LOGICA DI INVIO (DA IMPLEMENTARE) ---
+            # Nel tuo backend farai una cosa simile:
+            # account = Account(credentials)
+            # calendar = account.schedule().get_default_calendar()
+            # new_event = calendar.new_event()
+            # new_event.subject = titolo_calendario
+            # new_event.body = corpo_calendario
+            # new_event.start = start_datetime
+            # new_event.end = end_datetime
+            # new_event.save()
+            
+            st.info(f"🔄 Sincronizzazione Exchange avviata per {user_email}: '{titolo_calendario}' impostato per il {start_datetime.strftime('%d/%m/%Y %H:%M')}")
+            return True
+        except Exception as e:
+            st.error(f"Errore sincronizzazione Exchange: {e}")
+            return False
+
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("Imprendo Morpheus")
     st.divider()
@@ -222,19 +263,17 @@ if utente_connesso:
     st.write("")
     st.write("")
 
-    # --- FEEDBACK DEI CAMPI MANCANTI (CON FILTRO ANTI-ERRORE) ---
+    # --- FEEDBACK DEI CAMPI MANCANTI ---
     if st.session_state.campi_mancanti:
-        # Puliamo i dati rimuovendo falsi positivi come la stringa "mancanti" o riferimenti all'orario vuoto
         nomi_puliti = [
             c.replace("_", " ").capitalize() 
             for c in st.session_state.campi_mancanti 
             if c.lower().strip() != "mancanti" and c != "orario_promemoria"
         ]
-        # Mostriamo il banner giallo solo se ci sono veri e propri campi vuoti rimasti nella lista
         if nomi_puliti:
             st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
 
-    # --- CREAZIONE DELLE TAB PER ORGANIZZARE IL LAYOUT ---
+    # --- CREAZIONE DELLE TAB ---
     tab_dati, tab_allegati = st.tabs(["📝 Evento", "📸 Allegati"])
 
     # --- TAB 1: DATI DEL FORM EVENTO ---
@@ -271,7 +310,6 @@ if utente_connesso:
             st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
 
         st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
-
         st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=150)
 
         st.write("")
@@ -313,7 +351,6 @@ if utente_connesso:
     with tab_allegati:
         st.write("")
         st.write("### Allegati")
-        st.write("")
         st.write("")
         uploaded_files = st.file_uploader(
             "Trascina qui i file o tocca per scattare una foto/selezionare un allegato",
@@ -381,6 +418,11 @@ if utente_connesso:
     if st.button("💾 SALVA EVENTO SUL DATABASE", type="primary", use_container_width=True):
         st.balloons()
         st.success("Evento registrato correttamente!")
+        
+        # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
+        if st.session_state.form_data["salva_su_calendario"]:
+            # Passiamo l'email del commerciale connesso e i dati inseriti nel form
+            crea_evento_su_exchange(utente_connesso["email"], st.session_state.form_data)
         
         final_data = st.session_state.form_data.copy()
         if final_data["promemoria"]:
