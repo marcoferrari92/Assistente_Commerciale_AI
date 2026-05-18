@@ -17,7 +17,7 @@ def login_commerciale():
         return st.session_state.user_data
 
     st.title("Imprendo NEO")
-    st.title("Il tuo Assistente AI")
+    st.write("Il tuo Assistente AI")
     username = st.text_input("Username (Nome)", key="login_username").lower().strip()
     password = st.text_input("Password", type="password", key="login_password")
     
@@ -47,7 +47,7 @@ if utente_connesso:
     if "openai_key" in st.secrets:
         client = OpenAI(api_key=st.secrets["openai_key"])
     else:
-        st.error("⚠️ Chiave API 'openai_key' non trovata nei Secrets di Streamlit.")
+        st.error("⚠️ Chiave API 'openai_key' non trovata!")
         client = None
 
     # --- 1. INIZIALIZZAZIONE STATO DEL MODULO ---
