@@ -66,20 +66,6 @@ if 'audio_summary_done' not in st.session_state:
 if 'mic_key_counter' not in st.session_state:
     st.session_state.mic_key_counter = 0
 
-# --- 2. SIDEBAR ---
-with st.sidebar:
-    st.header("Configurazione")
-    api_key = st.text_input("OpenAI API Key", type="password", key="main_api_key")
-    if st.button("🗑️ Svuota Modulo"):
-        st.session_state.form_data = {k: "" if k != "tipologia" else "telefonata" for k in st.session_state.form_data}
-        st.session_state.form_data["vibes"] = "Positivo 👍"
-        st.session_state.form_data["promemoria"] = None
-        st.session_state.audio_summary_done = False
-        st.session_state.mic_key_counter += 1 # Reset microfono
-        st.rerun()
-
-client = OpenAI(api_key=api_key) if api_key else None
-
 # --- 4. FUNZIONI ---
 def speak(text):
     if not client: return None
