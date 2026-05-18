@@ -42,8 +42,19 @@ def login_commerciale():
     Pillola rossa, resti nel Paese delle Meraviglie, e vedrai quant'è profonda la tana del Bianconiglio. 
     Ti sto offrendo solo la verità. Ricordalo. Niente di più"*""")
     
-    username = st.text_input("Username (Nome)", key="login_username").lower().strip()
-    password = st.text_input("Password", type="password", key="login_password")
+    # AGGIUNTI I PARAMETRI AUTOCOMPLETE PER DIRE AL BROWSER: "QUESTO È UN LOGIN"
+    username = st.text_input(
+        "Username (Nome)", 
+        key="login_username", 
+        autocomplete="username"
+    ).lower().strip()
+    
+    password = st.text_input(
+        "Password", 
+        type="password", 
+        key="login_password", 
+        autocomplete="current-password" # Dice al browser di suggerire le psw VECCHIE e non quelle nuove
+    )
     
     if st.button("Accedi", use_container_width=True):
         if "commerciali" in st.secrets and username in st.secrets["commerciali"]:
@@ -56,8 +67,6 @@ def login_commerciale():
         else:
             st.error("❌ Utente non trovato.")
     return None
-
-utente_connesso = login_commerciale()
 
 # --- 4. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
 if utente_connesso:
