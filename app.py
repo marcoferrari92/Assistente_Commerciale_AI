@@ -3,7 +3,7 @@ from openai import OpenAI
 from streamlit_mic_recorder import mic_recorder
 import io
 import json
-from datetime import datetime
+from datetime import datetime, time
 
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
@@ -19,7 +19,8 @@ if 'form_data' not in st.session_state:
         "note": "",
         "next_step": "",        
         "promemoria": None,
-        "orario_promemoria": None  # Nuovo campo specifico per l'orario del calendario
+        # Default preimpostato come oggetto time alle 09:00
+        "orario_promemoria": time(9, 0)  
     }
 if 'campi_mancanti' not in st.session_state:
     st.session_state.campi_mancanti = []
@@ -105,7 +106,6 @@ if utente_connesso:
         
         current_date_str = datetime.now().strftime("%Y-%m-%d")
         
-        # PROMPT AGGIORNATO: Ora estrae anche l'orario convertendolo in formato standard HH:MM
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
@@ -192,8 +192,10 @@ if utente_connesso:
                     for k in st.session_state.form_data.keys():
                         if k in res:
                             if res[k] is None:
-                                if k == "promemoria" or k == "vibes" or k == "orario_promemoria":
+                                if k == "promemoria" or k == "vibes":
                                     st.session_state.form_data[k] = None
+                                elif k == "orario_promemoria":
+                                    st.session_state.form_data[k] = time(9, 0) # Fallback su oggetto time
                                 else:
                                     st.session_state.form_data[k] = ""
                             else:
@@ -202,6 +204,12 @@ if utente_connesso:
                                         st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
                                     except:
                                         st.session_state.form_data[k] = None
+                                elif k == "orario_promemoria":
+                                    try:
+                                        # Convertiamo la stringa oraria "HH:MM" dell'AI in un vero oggetto time di Python
+                                        st.session_state.form_data[k] = datetime.strptime(res[k], "%H:%M").time()
+                                    except:
+                                        st.session_state.form_data[k] = time(9, 0)
                                 else:
                                     st.session_state.form_data[k] = res[k]
                     
@@ -270,16 +278,21 @@ if utente_connesso:
         )
         st.session_state.form_data["promemoria"] = chosen_date
         
-        # Mostriamo l'orario estratto in un campo di testo (così è visibile e modificabile)
-        current_time_val = st.session_state.form_data["orario_promemoria"] if st.session_state.form_data["orario_promemoria"] else ""
-        chosen_time = st.text_input("Orario Specifico (HH:MM)", value=current_time_val, placeholder="Es. 09:00 o 15:30")
-        st.session_state.form_data["orario_promemoria"] = chosen_time if chosen_time else None
+        # WIDGET PREIMPOSTATO DI STREAMLIT PER GLI ORARI (st.time_input)
+        current_time_val = st.session_state.form_data.get("orario_promemoria", time(9, 0))
+        if current_time_val is None:
+            current_time_val = time(9, 0)
+            
+        chosen_time = st.time_input("Orario Specifico", value=current_time_val)
+        st.session_state.form_data["orario_promemoria"] = chosen_time
 
     # --- 6. RIASSUNTO VOCALE DI CONFERMA GENERATO DA AI ---
     if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
         d = st.session_state.form_data
         promemoria_str = d['promemoria'].strftime('%d/%m/%Y') if d['promemoria'] else 'non impostato'
-        orario_str = d['orario_promemoria'] if d['orario_promemoria'] else 'non specificato'
+        
+        # Formattiamo l'oggetto time in stringa leggibile HH:MM per il riassunto vocale
+        orario_str = d['orario_promemoria'].strftime('%H:%M') if d['orario_promemoria'] else '09:00'
         
         with st.spinner("Morpheus sta preparando il riepilogo vocale..."):
             prompt_riepilogo = f"""
@@ -329,6 +342,10 @@ if utente_connesso:
         final_data = st.session_state.form_data.copy()
         if final_data["promemoria"]:
             final_data["promemoria"] = final_data["promemoria"].strftime("%Y-%m-%d")
+            
+        if final_data["orario_promemoria"]:
+            # Convertiamo l'oggetto time in stringa prima di inviarlo al database / stamparlo
+            final_data["orario_promemoria"] = final_data["orario_promemoria"].strftime("%H:%M")
             
         st.write("Dati inviati:", final_data)
         st.session_state.campi_mancanti = []
