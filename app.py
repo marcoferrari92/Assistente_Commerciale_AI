@@ -20,8 +20,10 @@ if 'form_data' not in st.session_state:
         "next_step": "",        
         "promemoria": None     
     }
-if 'audio_summary_done' not in st.session_state:
-    st.session_state.audio_summary_done = False
+
+# Questo flag conterrà l'audio generato da riprodurre una sola volta
+if 'audio_to_play' not in st.session_state:
+    st.session_state.audio_to_play = None
 
 if 'mic_key_counter' not in st.session_state:
     st.session_state.mic_key_counter = 0
@@ -104,7 +106,7 @@ if utente_connesso:
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
-        I campi sono: cliente, tipologia, object, contatto, vibes, note, next_step, promemoria.
+        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria.
 
         REGOLE PER IL CAMPO "contatto"
         - Inserisce nome e cognome se noti e tra parentesi l'ufficio o l'area aziendale del contatto.
@@ -191,14 +193,32 @@ if utente_connesso:
                         else:
                             st.session_state.form_data[k] = res[k]
                 
-                # CORREZIONE CRITICA LOOP: Resettiamo subito lo stato dell'audio riassuntivo qui, 
-                # costringendo l'app a rieseguire il riepilogo vocale solo sulla base dei nuovi dati estratti.
-                st.session_state.audio_summary_done = False
+                # CREAZIONE AUDIO DI CONFERMA: Lo facciamo qui, una volta sola, prima del rerun!
+                promemoria_str = st.session_state.form_data['promemoria'].strftime('%d/%m/%Y') if st.session_state.form_data['promemoria'] else 'non impostato'
+                testo_riepilogo = (
+                    f"Ricevuto. Ecco il riepilogo completo dell'evento. "
+                    f"Cliente: {st.session_state.form_data['cliente']}. "
+                    f"Oggetto: {st.session_state.form_data['oggetto'] if st.session_state.form_data['oggetto'] else 'non impostato'}. "
+                    f"Prossimo passo: {st.session_state.form_data['next_step'] if st.session_state.form_data['next_step'] else 'nessuno'}. "
+                    f"Data di promemoria: {promemoria_str}."
+                )
+                
+                # Salviamo il file audio nello stato globale prima di rinfrescare l'app
+                st.session_state.audio_to_play = speak(testo_riepilogo)
+                
+                # Reset dei flag di elaborazione
                 st.session_state.is_processing = False
                 st.session_state.mic_key_counter += 1 
                 st.rerun()
 
     st.divider()
+
+    # --- RIPRODUZIONE AUDIO "ONE-SHOT" ---
+    # Se c'è un file audio pronto in memoria, lo riproduce e poi lo cancella subito.
+    # Questo distrugge al 100% qualsiasi possibilità di loop infinito!
+    if st.session_state.audio_to_play:
+        st.audio(st.session_state.audio_to_play, autoplay=True)
+        st.session_state.audio_to_play = None # Svuota la memoria dopo l'autoplay
 
     # --- 5. IL MODULO FORM ---
     st.write("### 📝 Modulo Evento")
@@ -245,27 +265,6 @@ if utente_connesso:
             value=current_date_val if current_date_val else datetime.now().date()
         )
         st.session_state.form_data["promemoria"] = chosen_date
-
-    # --- 6. RIASSUNTO VOCALE DI CONFERMA (Protetto dai loop continui) ---
-    if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
-        d = st.session_state.form_data
-        promemoria_str = d['promemoria'].strftime('%d/%m/%Y') if d['promemoria'] else 'non impostato'
-        
-        testo_riepilogo = (
-            f"Ricevuto. Ecco il riepilogo completo dell'evento. "
-            f"Cliente: {d['cliente']}. "
-            f"Oggetto: {d['oggetto'] if d['oggetto'] else 'non impostato'}. "
-            f"Prossimo passo: {d['next_step'] if d['next_step'] else 'nessuno specificato'}. "
-            f"Data di promemoria: {promemoria_str}."
-        )
-        
-        # Eseguiamo il flag prima dell'azione di rendering dell'audio widget per bloccare il loop all'origine
-        st.session_state.audio_summary_done = True
-        
-        with st.spinner("L'AI sta leggendo il riepilogo finale..."):
-            audio_msg = speak(testo_riepilogo)
-            if audio_msg:
-                st.audio(audio_msg, autoplay=True)
 
     # --- 7. SALVATAGGIO ---
     st.divider()
