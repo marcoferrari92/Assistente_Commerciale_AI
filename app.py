@@ -33,7 +33,64 @@ if 'mic_key_counter' not in st.session_state:
     st.session_state.mic_key_counter = 0
 
 
-# --- 3. CONTROLLO ACCESSO MULTI-UTENTE (IMPRENDO MORPHEUS) ---
+# --- 3. FUNZIONE DI SINCRO CON MICROSOFT EXCHANGE (POSIZIONATA CORRETTAMENTE) ---
+def crea_evento_su_exchange(user_email, dati_evento):
+    from O365 import Account
+    
+    # CONTROLLO SE LE CHIAVI ESISTONO NEI SECRETS
+    if "microsoft_exchange" not in st.secrets:
+        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
+        return False
+        
+    # Estraiamo le credenziali in modo sicuro senza scriverle nel codice
+    credentials = (
+        st.secrets["microsoft_exchange"]["client_id"], 
+        st.secrets["microsoft_exchange"]["client_secret"]
+    )
+    tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
+    
+    scopes = ['calendars.readwrite']
+    
+    # Inizializziamo l'account usando le variabili protette
+    account = Account(credentials, tenant_id=tenant_id)
+    
+    if not account.is_authenticated:
+        redirect_uri = "https://tuo-app-streamlit.streamlit.app/" 
+        url, state = account.conauth.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
+        
+        st.warning("⚠️ L'applicazione non è ancora connessa al tuo Outlook aziendale.")
+        st.markdown(f"[🔗 Clicca qui per autorizzare Morpheus su Microsoft]({url})")
+        
+        result_url = st.text_input("Incolla qui l'URL della pagina su cui sei stato reindirizzato:", key="exchange_auth_url")
+        if result_url:
+            if account.conauth.request_token(result_url, state=state, redirect_uri=redirect_uri):
+                st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
+                st.rerun()
+        return False
+
+    try:
+        schedule = account.schedule(resource=user_email)
+        calendar = schedule.get_default_calendar()
+        
+        start_datetime = datetime.combine(dati_evento["promemoria"], dati_evento["orario_promemoria"])
+        end_datetime = start_datetime + timedelta(minutes=30)
+        
+        new_event = calendar.new_event()
+        new_event.subject = f"🔔 {dati_evento['cliente']} - {dati_evento['oggetto']}"
+        new_event.body = f"Contatto: {dati_evento['contatto']}\nProssimo Step: {dati_evento['next_step']}\n\nNote:\n{dati_evento['note']}"
+        new_event.start = start_datetime
+        new_event.end = end_datetime
+        
+        new_event.save()
+        st.success(f"📅 Promemoria sincronizzato su Outlook per {user_email}!")
+        return True
+        
+    except Exception as e:
+        st.error(f"Errore durante l'invio dell'evento a Exchange: {e}")
+        return False
+
+
+# --- 4. CONTROLLO ACCESSO MULTI-UTENTE (IMPRENDO MORPHEUS) ---
 def login_commerciale():
     if "user_data" not in st.session_state:
         st.session_state.user_data = None
@@ -75,7 +132,7 @@ def login_commerciale():
 
 utente_connesso = login_commerciale()
 
-# --- 4. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
+# --- 5. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
 if utente_connesso:
     st.sidebar.write(f"👤 Utente: **{utente_connesso['username'].capitalize()}**")
     if st.sidebar.button("🚪 Logout"):
@@ -89,7 +146,7 @@ if utente_connesso:
         st.error("⚠️ Chiave API 'openai_key' non trovato nei Secrets!")
         client = None
 
-    # --- FUNZIONI ---
+    # --- FUNZIONI AI ---
     def speak(text):
         if not client: return None
         try:
@@ -169,64 +226,8 @@ if utente_connesso:
             response_format={ "type": "json_object" }
         )
         return json.loads(response.choices[0].message.content)
-    
-    from O365 import Account
 
-def crea_evento_su_exchange(user_email, dati_evento):
-    # CONTROLLO SE LE CHIAVI ESISTONO NEI SECRETS
-    if "microsoft_exchange" not in st.secrets:
-        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
-        return False
-        
-    # Estraiamo le credenziali in modo sicuro senza scriverle nel codice
-    credentials = (
-        st.secrets["microsoft_exchange"]["client_id"], 
-        st.secrets["microsoft_exchange"]["client_secret"]
-    )
-    tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    scopes = ['calendars.readwrite']
-    
-    # Inizializziamo l'account usando le variabili protette
-    account = Account(credentials, tenant_id=tenant_id)
-    
-    # --- DA QUI IN POI IL FLUSSO RIMANE IDENTICO ---
-    if not account.is_authenticated:
-        redirect_uri = "https://tuo-app-streamlit.streamlit.app/" 
-        url, state = account.conauth.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
-        
-        st.warning("⚠️ L'applicazione non è ancora connessa al tuo Outlook aziendale.")
-        st.markdown(f"[🔗 Clicca qui per autorizzare Morpheus su Microsoft]({url})")
-        
-        result_url = st.text_input("Incolla qui l'URL della pagina su cui sei stato reindirizzato:", key="exchange_auth_url")
-        if result_url:
-            if account.conauth.request_token(result_url, state=state, redirect_uri=redirect_uri):
-                st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
-                st.rerun()
-        return False
-
-    try:
-        schedule = account.schedule(resource=user_email)
-        calendar = schedule.get_default_calendar()
-        
-        start_datetime = datetime.combine(dati_evento["promemoria"], dati_evento["orario_promemoria"])
-        end_datetime = start_datetime + timedelta(minutes=30)
-        
-        new_event = calendar.new_event()
-        new_event.subject = f"🔔 {dati_evento['cliente']} - {dati_evento['oggetto']}"
-        new_event.body = f"Contatto: {dati_evento['contatto']}\nProssimo Step: {dati_evento['next_step']}\n\nNote:\n{dati_evento['note']}"
-        new_event.start = start_datetime
-        new_event.end = end_datetime
-        
-        new_event.save()
-        st.success(f"📅 Promemoria sincronizzato su Outlook per {user_email}!")
-        return True
-        
-    except Exception as e:
-        st.error(f"Errore durante l'invio dell'evento a Exchange: {e}")
-        return False
-        
-
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("Imprendo Morpheus")
     st.divider()
@@ -437,7 +438,6 @@ def crea_evento_su_exchange(user_email, dati_evento):
         
         # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
         if st.session_state.form_data["salva_su_calendario"]:
-            # Passiamo l'email del commerciale connesso e i dati inseriti nel form
             crea_evento_su_exchange(utente_connesso["email"], st.session_state.form_data)
         
         final_data = st.session_state.form_data.copy()
