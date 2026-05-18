@@ -170,66 +170,62 @@ if utente_connesso:
         )
         return json.loads(response.choices[0].message.content)
     
-    # --- FUNZIONE DI PREPARAZIONE PER MICROSOFT EXCHANGE ---
     from O365 import Account
 
 def crea_evento_su_exchange(user_email, dati_evento):
-    # 1. Le credenziali dell'app che hai preso da Azure
+    # CONTROLLO SE LE CHIAVI ESISTONO NEI SECRETS
+    if "microsoft_exchange" not in st.secrets:
+        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
+        return False
+        
+    # Estraiamo le credenziali in modo sicuro senza scriverle nel codice
     credentials = (
-        'IL_TUO_CLIENT_ID_DI_TEST', 
-        'IL_VALORE_DEL_SEGRETO_CLIENT'
+        st.secrets["microsoft_exchange"]["client_id"], 
+        st.secrets["microsoft_exchange"]["client_secret"]
     )
+    tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # Specificiamo i permessi che servono (lettura e scrittura calendario)
     scopes = ['calendars.readwrite']
     
-    # Inizializziamo l'account con il tenant di Azure
-    account = Account(credentials, tenant_id='IL_TUO_TENANT_ID')
+    # Inizializziamo l'account usando le variabili protette
+    account = Account(credentials, tenant_id=tenant_id)
     
-    # 2. CONTROLLO AUTORIZZAZIONE (Il famoso Token)
+    # --- DA QUI IN POI IL FLUSSO RIMANE IDENTICO ---
     if not account.is_authenticated:
-        # Se non è autorizzato, generiamo il link ufficiale Microsoft per il commerciale
-        # Sostituisci con l'URL reale della tua app Streamlit
         redirect_uri = "https://tuo-app-streamlit.streamlit.app/" 
         url, state = account.conauth.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
         
-        # Mostriamo il link a schermo in Streamlit solo al commerciale interessato
         st.warning("⚠️ L'applicazione non è ancora connessa al tuo Outlook aziendale.")
         st.markdown(f"[🔗 Clicca qui per autorizzare Morpheus su Microsoft]({url})")
         
-        # Il commerciale mette la password su Microsoft, viene reindirizzato e incolla l'URL di ritorno qui
-        result_url = st.text_input("Incolla qui l'URL della pagina bianca su cui sei stato reindirizzato:")
+        result_url = st.text_input("Incolla qui l'URL della pagina su cui sei stato reindirizzato:", key="exchange_auth_url")
         if result_url:
             if account.conauth.request_token(result_url, state=state, redirect_uri=redirect_uri):
                 st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
                 st.rerun()
         return False
 
-    # 3. CREAZIONE APPUNTAMENTO (Se già autenticato con il Token)
     try:
-        # Recuperiamo il calendario del commerciale specifico (usando la sua mail del login)
         schedule = account.schedule(resource=user_email)
         calendar = schedule.get_default_calendar()
         
-        # Prepariamo le date
         start_datetime = datetime.combine(dati_evento["promemoria"], dati_evento["orario_promemoria"])
         end_datetime = start_datetime + timedelta(minutes=30)
         
-        # Compiliamo l'evento fittizio su Outlook
         new_event = calendar.new_event()
         new_event.subject = f"🔔 {dati_evento['cliente']} - {dati_evento['oggetto']}"
         new_event.body = f"Contatto: {dati_evento['contatto']}\nProssimo Step: {dati_evento['next_step']}\n\nNote:\n{dati_evento['note']}"
         new_event.start = start_datetime
         new_event.end = end_datetime
         
-        # Invia ai server Microsoft Exchange
         new_event.save()
-        st.success(f"📅 Promemoria sincronizzato su Outlook per {user_email} alle {ora_promemoria.strftime('%H:%M')}!")
+        st.success(f"📅 Promemoria sincronizzato su Outlook per {user_email}!")
         return True
         
     except Exception as e:
         st.error(f"Errore durante l'invio dell'evento a Exchange: {e}")
         return False
+        
 
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("Imprendo Morpheus")
