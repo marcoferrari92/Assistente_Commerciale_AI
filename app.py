@@ -5,7 +5,7 @@ import io
 import json
 from datetime import datetime
 
-# --- 1. CONFIGURAZIONE PAGINA (Eseguita una sola volta all'inizio) ---
+# --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
 
 # --- 2. INIZIALIZZAZIONE STATO GLOBALE ---
@@ -66,11 +66,11 @@ if utente_connesso:
         st.session_state.user_data = None
         st.rerun()
 
-    # --- INIZIALIZZAZIONE CLIENT OPENAI DA SECRETS ---
+    # --- INIZIALIZZAZIONE CLIENT OPENAI ---
     if "openai_key" in st.secrets:
         client = OpenAI(api_key=st.secrets["openai_key"])
     else:
-        st.error("⚠️ Chiave API 'openai_key' non trovata nei Secrets!")
+        st.error("⚠️ Chiave API 'openai_key' non trovato nei Secrets!")
         client = None
 
     # --- FUNZIONI ---
@@ -91,7 +91,6 @@ if utente_connesso:
         
         current_date_str = datetime.now().strftime("%Y-%m-%d")
         
-        # PROMPT ORIGINALE LASCIATO ESATTAMENTE INVARIATO
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
@@ -142,68 +141,62 @@ if utente_connesso:
 
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("🎙️ Imprendo Morpheus")
-    st.write("### 🎤 Assistente Rapido")
-
-    # CSS SELETTIVO: Colpisce SOLO il microfono e lascia stare il resto
+    
+    # 1. Stile CSS blindato per il pulsante rotondo centrale
     st.markdown("""
         <style>
-        /* 1. AGGANCIA E MODIFICA SOLO IL PULSANTE DEL MICROFONO */
-        div[data-testid="stCustomComponentV1"] button,
-        div[class*="stMicRecorder"] button,
-        .element-container iframe + div button {
-            width: 100% !important;
-            min-height: 180px !important; /* Altezza massiccia per l'auto */
-            height: 180px !important;
-            font-size: 26px !important;    /* Testo gigante */
+        /* Centra il contenitore del microfono nella pagina */
+        #blocco-mic-auto {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 40px auto;
+            width: 100%;
+        }
+        
+        #blocco-mic-auto div button {
+            width: 220px !important;
+            height: 220px !important;
+            min-height: 220px !important;
+            max-width: 220px !important;
+            border-radius: 50% !important; /* Lo rende perfettamente rotondo */
+            font-size: 22px !important;
             font-weight: bold !important;
-            background-color: #2e7d32 !important; /* Verde scuro */
+            line-height: 1.3 !important;
+            background-color: #1b5e20 !important; /* Verde Matrix Scuro */
             color: white !important;
-            border-radius: 20px !important; 
-            border: 4px solid #00FF66 !important; /* Bordo neon */
-            box-shadow: 0px 8px 15px rgba(0, 255, 102, 0.3) !important;
-            transition: all 0.3s ease-in-out !important;
-            display: block !important;
+            border: 5px solid #00FF66 !important; /* Cerchio neon esterno */
+            box-shadow: 0px 10px 25px rgba(0, 255, 102, 0.4) !important;
+            transition: all 0.2s ease-in-out !important;
+            cursor: pointer;
+            white-space: normal !important; /* Permette al testo di andare a capo */
+            word-wrap: break-word !important;
         }
         
-        /* Forza il colore rosso sul pulsante del microfono quando è attivo */
-        div[data-testid="stCustomComponentV1"] button:active,
-        div[data-testid="stCustomComponentV1"] button:focus {
-            background-color: #d32f2f !important; /* Rosso Matrix */
+        /* Quando il pulsante rotondo viene cliccato o è in registrazione */
+        #blocco-mic-auto div button:active,
+        #blocco-mic-auto div button:focus {
+            background-color: #b71c1c !important; /* Diventa Rosso */
             border-color: #ff1744 !important;
-            box-shadow: 0px 8px 15px rgba(255, 23, 68, 0.5) !important;
-        }
-
-        /* 2. PROTEGGIAMO GLI ALTRI PULSANTI (PULIZIA) */
-        /* Resetta il pulsante della sidebar e del salva per non farli influenzare */
-        .stSidebar button, .stButton > button:not(div[data-testid="stCustomComponentV1"] button) {
-            width: auto !important;
-            min-height: unset !important;
-            height: auto !important;
-            font-size: inherit !important;
-            font-weight: normal !important;
-            background-color: transparent !important;
-            color: inherit !important;
-            border-radius: inherit !important;
-            border: 1px solid rgba(49, 51, 63, 0.2) !important;
-            box-shadow: none !important;
-        }
-        
-        /* Mantiene il pulsante di salvataggio largo a tutto schermo come avevi chiesto prima, ma con lo stile pulito */
-        div[data-testid="element-container"] .stButton button[data-testid="baseButton-primary"] {
-            width: 100% !important;
+            box-shadow: 0px 10px 25px rgba(255, 23, 68, 0.5) !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
+    st.write("### 🚗 Modalità Guida One-Touch")
+    st.write("Tocca il cerchio per parlare, tocca di nuovo per elaborare.")
+
     if not client:
         st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
     else:
-        # Il widget del microfono gigante
+        # 2. Inseriamo il microfono dentro un contenitore HTML con ID personalizzato per isolarlo dal resto del foglio CSS
+        st.markdown('<div id="blocco-mic-auto">', unsafe_allow_html=True)
         audio = mic_recorder(
-            start_prompt="🔴 AVVIA REPORT (TOCCA E PARLA)", 
-            stop_prompt="⏹️ FINITO! ELABORA REPORT", 
+            start_prompt="🔴\nAVVIA\nREPORT", 
+            stop_prompt="⏹️\nELABORA\nREPORT", 
             key=f"mic_{st.session_state.mic_key_counter}"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
 
         if audio:
             with st.spinner("L'AI sta compilando il modulo per te..."):
@@ -225,7 +218,7 @@ if utente_connesso:
 
     st.divider()
 
-    # --- 5. IL MODULO FORM ---
+    # --- 5. IL MODULO FORM (Tutti i pulsanti qui restano perfettamente originali) ---
     st.write("### 📝 Modulo Evento")
 
     col1, col2 = st.columns(2)
