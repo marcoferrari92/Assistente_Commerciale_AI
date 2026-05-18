@@ -232,7 +232,6 @@ if utente_connesso:
     # --- TAB 1: DATI DEL FORM EVENTO ---
     with tab_dati:
         st.write("")
-        st.write("")
         st.write("### Evento")
 
         # Riga 1: Cliente e Tipologia
