@@ -151,36 +151,57 @@ if utente_connesso:
 
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("🎙️ Imprendo Morpheus")
+    st.divide()
+    
+
     st.write("### 🎤 Assistente Rapido")
-
     if not client:
-        st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
+        st.warning("Assistente vocale NON disponibile! Verifica la chiave API.")
     else:
-        # 1. GESTIONE DEGLI STATI COLORATI NATIVI
-        # Controlliamo se l'AI sta elaborando
+        audio = None
+
+        # --- GESTIONE DEI 3 STATI COLORATI NATIVI (SENZA CSS) ---
+        
+        # STATO 1: GIALLO (L'AI sta elaborando)
         if st.session_state.get("is_processing", False):
-            # STATO GIALLO: Mostra un avviso giallo gigante sopra il microfono
-            st.warning("⚠️ GIALLO: L'AI sta elaborando il report... Attendi.")
+            st.warning("⚠️ ATTENDI: L'AI sta elaborando il report...")
+            st.button("⏳ Elaborazione in corso...", disabled=True, use_container_width=True)
+
+        # STATO 2: ROSSO (Il commerciale ha premuto Start e sta parlando)
+        elif st.session_state.get("is_recording", False):
+            st.error("🔴 REGISTRAZIONE IN CORSO...")
+            
+            # Questo microfono mostra solo il pulsante di STOP
+            audio = mic_recorder(
+                start_prompt="⏹️ PREMI PER STOPPARE", # Non verrà visto perché parte già attivo
+                stop_prompt="⏹️ PREMI PER STOPPARE", 
+                key=f"mic_stop_{st.session_state.mic_key_counter}"
+            )
+            
+            # Se ripreme il bottone, interrompe la registrazione
+            if audio:
+                st.session_state.is_recording = False
+                st.session_state.is_processing = True
+                st.rerun()
+
+        # STATO 3: VERDE (Il sistema è a riposo, pronto a partire)
         else:
-            # STATO VERDE: L'app è pronta a ricevere il comando
-            st.success("🟢 VERDE: Sistema pronto. Tocca sotto per parlare.")
+            st.success("🟢 READY: Racconta un nuovo evento!")
+            
+            # Questo microfono mostra il pulsante di START
+            audio = mic_recorder(
+                start_prompt="🎤 AVVIA REGISTRAZIONE", 
+                stop_prompt="🎤 AVVIA REGISTRAZIONE", 
+                key=f"mic_start_{st.session_state.mic_key_counter}"
+            )
+            
+            # Appena tocca il pulsante verde, attiviamo subito lo stato ROSSO
+            if audio:
+                st.session_state.is_recording = True
+                st.rerun()
 
-        # 2. IL WIDGET DEL MICROFONO (Torna alle dimensioni standard stabili)
-        audio = mic_recorder(
-            start_prompt="🎤 AVVIA REGISTRAZIONE", 
-            stop_prompt="⏹️ STOP (ELABORA)", 
-            key=f"mic_{st.session_state.mic_key_counter}"
-        )
-
-        # 3. SE IL COMMERCIALE HA PREMUTO STOP
-        if audio:
-            # Attiviamo lo stato giallo di elaborazione
-            st.session_state.is_processing = True
-            st.rerun()
-
-    # Intercettiamo il rerun per fare il lavoro pesante mentre lo stato è GIALLO
+    # --- ELABORAZIONE DATI (QUANDO L'AUDIO È STATO RACCOLTO) ---
     if 'audio' in locals() and audio and st.session_state.get("is_processing", False):
-        # Il caricamento nativo gira mentre sopra c'è il banner giallo
         with st.spinner("Morpheus sta scrivendo i dati..."):
             res = analyze_full_report(audio['bytes'])
             if res:
@@ -194,8 +215,9 @@ if utente_connesso:
                         else:
                             st.session_state.form_data[k] = res[k]
                 
-                # Finito il lavoro, resettiamo il flag (si toglie il giallo e torna il VERDE)
+                # Reset totale di tutti i flag: si torna al VERDE!
                 st.session_state.is_processing = False
+                st.session_state.is_recording = False
                 st.session_state.audio_summary_done = False 
                 st.session_state.mic_key_counter += 1 
                 st.rerun()
