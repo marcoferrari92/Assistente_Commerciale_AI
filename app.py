@@ -42,7 +42,6 @@ def login_commerciale():
     Pillola rossa, resti nel Paese delle Meraviglie, e vedrai quant'è profonda la tana del Bianconiglio. 
     Ti sto offrendo solo la verità. Ricordalo. Niente di più"*""")
     
-    # Autocomplete configurato per permettere al browser di salvare le credenziali
     username = st.text_input(
         "Username (Nome)", 
         key="login_username", 
@@ -67,6 +66,7 @@ def login_commerciale():
         else:
             st.error("❌ Utente non trovato.")
     return None
+
 utente_connesso = login_commerciale()
 
 # --- 4. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
@@ -104,7 +104,7 @@ if utente_connesso:
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
-        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria.
+        I campi sono: cliente, tipologia, object, contatto, vibes, note, next_step, promemoria.
 
         REGOLE PER IL CAMPO "contatto"
         - Inserisce nome e cognome se noti e tra parentesi l'ufficio o l'area aziendale del contatto.
@@ -151,7 +151,6 @@ if utente_connesso:
 
     
     # --- LOGICA INTERFACCIA PRINCIPALE ---
-    
     st.title("🎙️ Imprendo Morpheus")
     st.divider()
     st.write("### 🎤 Assistente Rapido")
@@ -161,13 +160,11 @@ if utente_connesso:
     else:
         # 1. BANNER SEMAFORO NATIVI
         if st.session_state.get("is_processing", False):
-            # STATO GIALLO: Blocco visivo enorme mentre l'AI elabora
             st.warning("⚠️ ATTENDI: L'AI sta elaborando il report...")
         else:
-            # STATO VERDE: Blocco di avvio pronto
             st.success("🟢 READY")
 
-        # 2. IL WIDGET DEL MICROFONO NATIVO (Stabile al 100% e senza trucchi)
+        # 2. IL WIDGET DEL MICROFONO NATIVO
         audio = mic_recorder(
             start_prompt="🎤 RACCONTA L'EVENTO", 
             stop_prompt="⏹️ ELABORA REPORT", 
@@ -194,14 +191,14 @@ if utente_connesso:
                         else:
                             st.session_state.form_data[k] = res[k]
                 
-                # Finito il lavoro resettiamo il flag (Toglie il giallo e torna VERDE)
+                # CORREZIONE CRITICA LOOP: Resettiamo subito lo stato dell'audio riassuntivo qui, 
+                # costringendo l'app a rieseguire il riepilogo vocale solo sulla base dei nuovi dati estratti.
+                st.session_state.audio_summary_done = False
                 st.session_state.is_processing = False
-                st.session_state.audio_summary_done = False 
                 st.session_state.mic_key_counter += 1 
                 st.rerun()
 
-
-    
+    st.divider()
 
     # --- 5. IL MODULO FORM ---
     st.write("### 📝 Modulo Evento")
@@ -249,7 +246,7 @@ if utente_connesso:
         )
         st.session_state.form_data["promemoria"] = chosen_date
 
-    # --- 6. RIASSUNTO VOCALE DI CONFERMA ---
+    # --- 6. RIASSUNTO VOCALE DI CONFERMA (Protetto dai loop continui) ---
     if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
         d = st.session_state.form_data
         promemoria_str = d['promemoria'].strftime('%d/%m/%Y') if d['promemoria'] else 'non impostato'
@@ -257,16 +254,18 @@ if utente_connesso:
         testo_riepilogo = (
             f"Ricevuto. Ecco il riepilogo completo dell'evento. "
             f"Cliente: {d['cliente']}. "
-            f"Oggetto: {d['oggetto']}. "
+            f"Oggetto: {d['oggetto'] if d['oggetto'] else 'non impostato'}. "
             f"Prossimo passo: {d['next_step'] if d['next_step'] else 'nessuno specificato'}. "
             f"Data di promemoria: {promemoria_str}."
         )
+        
+        # Eseguiamo il flag prima dell'azione di rendering dell'audio widget per bloccare il loop all'origine
+        st.session_state.audio_summary_done = True
         
         with st.spinner("L'AI sta leggendo il riepilogo finale..."):
             audio_msg = speak(testo_riepilogo)
             if audio_msg:
                 st.audio(audio_msg, autoplay=True)
-                st.session_state.audio_summary_done = True
 
     # --- 7. SALVATAGGIO ---
     st.divider()
