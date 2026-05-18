@@ -165,7 +165,7 @@ if utente_connesso:
             st.warning("⚠️ ATTENDI: L'AI sta elaborando il report...")
         else:
             # STATO VERDE: Blocco di avvio pronto
-            st.success("🟢 READY. Racconta un nuovo evento!")
+            st.success("🟢 READY")
 
         # 2. IL WIDGET DEL MICROFONO NATIIVO (Stabile al 100%)
         audio = mic_recorder(
