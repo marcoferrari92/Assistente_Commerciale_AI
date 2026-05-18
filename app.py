@@ -265,23 +265,47 @@ if utente_connesso:
         st.session_state.form_data["promemoria"] = chosen_date
 
     # --- 6. RIASSUNTO VOCALE DI CONFERMA ---
+    # --- 6. RIASSUNTO VOCALE DI CONFERMA GENERATO DA AI ---
     if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
         d = st.session_state.form_data
         promemoria_str = d['promemoria'].strftime('%d/%m/%Y') if d['promemoria'] else 'non impostato'
         
-        testo_riepilogo = (
-            f"Ricevuto. Ecco il riepilogo completo dell'evento. "
-            f"Cliente: {d['cliente']}. "
-            f"Oggetto: {d['oggetto']}. "
-            f"Prossimo passo: {d['next_step'] if d['next_step'] else 'nessuno specificato'}. "
-            f"Data di promemoria: {promemoria_str}."
-        )
-        
-        with st.spinner("L'AI sta leggendo il riepilogo finale..."):
-            audio_msg = speak(testo_riepilogo)
-            if audio_msg:
-                st.audio(audio_msg, autoplay=True)
-                st.session_state.audio_summary_done = True
+        with st.spinner("Morpheus sta preparando il riepilogo vocale..."):
+            # Passiamo TUTTI i dati a gpt-4o, incluse le note e l'esito (vibes)
+            prompt_riepilogo = f"""
+            Sei Morpheus, l'assistente virtuale del commerciale. 
+            Genera un breve discorso di conferma (massimo 3-4 frasi) in modo naturale, fluido e colloquiale ma professionale.
+            Usa questi dati reali per formulare il discorso:
+            - Cliente: {d['cliente']}
+            - Oggetto: {d['oggetto'] if d['oggetto'] else 'non specificato'}
+            - Esito dell'incontro (Vibes): {d['vibes'] if d['vibes'] else 'non specificato'}
+            - Note e dettagli rilevanti: {d['note']}
+            - Prossimo Step: {d['next_step'] if d['next_step'] else 'nessuno'}
+            - Scadenza/Promemoria: {promemoria_str}
+            
+            REGOLE DI TONO:
+            - Non fare un elenco della spesa. Il discorso deve essere continuo e naturale.
+            - Se l'esito è "Positivo 👍", usa un tono soddisfatto (es. "Ottimo, ho registrato l'incontro positivo con...").
+            - Se l'esito è "Negativo 👎", usa un tono pragmatico e di supporto (es. "Ho preso nota dei problemi riscontrati con...").
+            - Riassumi o cita brevemente il fulcro delle note per far capire che hai capito i dettagli tecnici.
+            - Chiudi dicendo che se è tutto corretto si può salvare.
+            - Non usare elenchi puntati o asterischi, scrivi solo testo liscio da leggere.
+            """
+            
+            try:
+                response_testo = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt_riepilogo}]
+                )
+                testo_fluido = response_testo.choices[0].message.content
+                
+                # Passiamo il testo personalizzato al modello TTS (Text-to-Speech)
+                audio_msg = speak(testo_fluido)
+                if audio_msg:
+                    st.audio(audio_msg, autoplay=True)
+                    st.session_state.audio_summary_done = True
+            except Exception as e:
+                st.error(f"Errore nella generazione del riepilogo AI: {e}")
 
     # --- 7. SALVATAGGIO ---
     st.divider()
