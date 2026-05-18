@@ -19,9 +19,9 @@ def login_commerciale():
     st.title("Morpheous")
     st.write("Il tuo Assistente AI")
     st.write(r"""
-    *<<Pillola blu, fine della storia: domani ti sveglierai in camera tua, e crederai a quello che vorrai. 
+    *"Pillola blu, fine della storia: domani ti sveglierai in camera tua, e crederai a quello che vorrai. 
     Pillola rossa, resti nel Paese delle Meraviglie, e vedrai quant'è profonda la tana del Bianconiglio. 
-    Ti sto offrendo solo la verità. Ricordalo. Niente di più>>*""")
+    Ti sto offrendo solo la verità. Ricordalo. Niente di più"*""")
     username = st.text_input("Username (Nome)", key="login_username").lower().strip()
     password = st.text_input("Password", type="password", key="login_password")
     
