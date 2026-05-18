@@ -151,9 +151,7 @@ if utente_connesso:
 
     
     # --- LOGICA INTERFACCIA PRINCIPALE ---
-    
-   # --- LOGICA INTERFACCIA PRINCIPALE ---
-    
+
     st.title("🎙️ Imprendo Morpheus")
     st.divider()
     st.write("### 🎤 Assistente Rapido")
@@ -167,60 +165,72 @@ if utente_connesso:
         else:
             st.success("🟢 READY")
 
-        # --- IL TRUCCO DEL PULSANTE GIGANTE SOVRAPPOSTO ---
-        # Creiamo un contenitore HTML con posizione relativa
+        # --- REGOLE CSS PER LA SOVRAPOSIZIONE PERFETTA ---
         st.markdown("""
             <style>
-            /* Crea l'area del mega bottone nativo */
+            /* 1. Il contenitore principale deve bloccare lo spazio (altezza 150px) */
             .area-pulsante-auto {
-                position: relative;
-                width: 100%;
-                height: 150px;
-                margin: 20px 0;
+                position: relative !important;
+                width: 100% !important;
+                height: 150px !important;
+                margin: 20px 0 !important;
             }
             
-            /* Questo è il look del nostro vero pulsante (Verde Matrix) */
+            /* 2. Il nostro bottone Matrix (sta sotto ma si vede) */
             .bottone-finto-auto {
-                position: absolute;
-                width: 100%;
-                height: 150px;
-                background-color: #1b5e20;
-                color: white;
-                border: 3px solid #00FF66;
-                border-radius: 15px;
-                font-size: 24px;
-                font-weight: bold;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                box-shadow: 0px 8px 16px rgba(0, 255, 102, 0.3);
-                pointer-events: none; /* Ignora i clic, così passano sotto */
-                z-index: 1;
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 150px !important;
+                background-color: #1b5e20 !important;
+                color: white !important;
+                border: 3px solid #00FF66 !important;
+                border-radius: 15px !important;
+                font-size: 24px !important;
+                font-weight: bold !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                box-shadow: 0px 8px 16px rgba(0, 255, 102, 0.3) !important;
+                z-index: 1 !important;
+                pointer-events: none !important; /* I clic ci passano attraverso */
             }
             
-            /* Prende l'iframe del microfono vero e lo rende gigante e trasparente sopra il nostro bottone */
+            /* 3. Prende il microfono di Streamlit (iframe o div) e lo costringe a sovrapporsi al 100% */
             .area-pulsante-auto div[data-testid="stCustomComponentV1"],
-            .area-pulsante-auto iframe {
-                position: absolute;
-                top: 0;
-                left: 0;
+            .area-pulsante-auto iframe,
+            .area-pulsante-auto .element-container {
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
                 width: 100% !important;
                 height: 150px !important;
                 margin: 0 !important;
-                opacity: 0.01; /* Quasi invisibile, ma intercettabile al tocco */
-                z-index: 2; /* Sta SOPRA, quindi riceve il clic del dito */
-                cursor: pointer;
+                padding: 0 !important;
+                z-index: 2 !important; /* Sta SOPRA il bottone verde */
+            }
+
+            /* 4. Prende il tastino bianco originale ("START") dentro l'iframe e lo rende invisibile ma gigante */
+            .area-pulsante-auto div[data-testid="stCustomComponentV1"] button,
+            .area-pulsante-auto iframe + div button,
+            iframe button {
+                width: 100% !important;
+                height: 150px !important;
+                min-height: 150px !important;
+                opacity: 0 !important; /* Totalmente invisibile così si vede solo il verde sotto */
+                cursor: pointer !important;
             }
             </style>
         """, unsafe_allow_html=True)
 
-        # Montiamo la struttura: il testo cambia dinamicamente se l'app si ricarica in elaborazione
+        # Il testo cambia se l'app sta elaborando
         testo_bottone = "⏳ ELABORAZIONE..." if st.session_state.get("is_processing", False) else "🎤 TOCCA E RACCONTA L'EVENTO"
         
-        # Generiamo il box interattivo
+        # Generiamo il blocco contenitore
         st.markdown(f'<div class="area-pulsante-auto"><div class="bottone-finto-auto">{testo_bottone}</div>', unsafe_allow_html=True)
         
-        # Il microfono vero viene renderizzato dentro il div, posizionandosi sopra grazie al CSS
+        # Il microfono originale viene iniettato qui dentro e bloccato in cima dalle regole 'top: 0' e 'position: absolute'
         audio = mic_recorder(
             start_prompt="START", 
             stop_prompt="STOP", 
@@ -232,27 +242,6 @@ if utente_connesso:
         if audio:
             st.session_state.is_processing = True
             st.rerun()
-
-    # Intercettiamo il caricamento per elaborare l'audio mantenendo lo stato GIALLO
-    if 'audio' in locals() and audio and st.session_state.get("is_processing", False):
-        with st.spinner("Morpheus sta scrivendo i dati..."):
-            res = analyze_full_report(audio['bytes'])
-            if res:
-                for k in st.session_state.form_data.keys():
-                    if k in res and res[k]: 
-                        if k == "promemoria":
-                            try:
-                                st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
-                            except:
-                                st.session_state.form_data[k] = None
-                        else:
-                            st.session_state.form_data[k] = res[k]
-                
-                # Finito il lavoro resettiamo il flag (Toglie il giallo e torna VERDE)
-                st.session_state.is_processing = False
-                st.session_state.audio_summary_done = False 
-                st.session_state.mic_key_counter += 1 
-                st.rerun()
 
 
     
