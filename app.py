@@ -8,6 +8,43 @@ from datetime import datetime
 # Configurazione di pagina (Eseguita una sola volta all'inizio)
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
 
+st.write("### 🚗 Modalità Guida (One-Touch)")
+st.write("Tocca il mega-pulsante sotto per iniziare a parlare. Toccalo di nuovo per elaborare.")
+
+# Iniezione di CSS per trasformare il widget del microfono in un pulsante gigante
+st.markdown("""
+    <style>
+    /* Individua il pulsante del microfono di Streamlit e lo stravolge */
+    div[data-testid="stMarkdownContainer"] + div button {
+        width: 100% !important;
+        min-height: 180px !important; /* Altezza massiccia per il touch */
+        font-size: 26px !important;    /* Testo enorme leggibile al volo */
+        font-weight: bold !important;
+        background-color: #2e7d32 !important; /* Verde scuro ben visibile */
+        color: white !important;
+        border-radius: 20px !important; /* Angoli arrotondati stile app mobile */
+        border: 4px solid #00FF66 !important; /* Bordo neon stile Matrix */
+        box-shadow: 0px 8px 15px rgba(0, 255, 102, 0.3) !important;
+        transition: all 0.3s ease 0s;
+    }
+    
+    /* Cambia colore quando il pulsante è attivo (mentre registra) */
+    div[data-testid="stMarkdownContainer"] + div button:active, 
+    div[data-testid="stMarkdownContainer"] + div button:focus {
+        background-color: #d32f2f !important; /* Diventa Rosso per indicare il "REC" */
+        border-color: #ff1744 !important;
+        box-shadow: 0px 8px 15px rgba(255, 23, 68, 0.5) !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Il widget del microfono ora occuperà tutto lo spazio visivo impostato dal CSS
+audio = mic_recorder(
+    start_prompt="🔴 AVVIA REPORT (TOCCA E PARLA)", 
+    stop_prompt="⏹️ FINITO! ELABORA REPORT", 
+    key=f"mic_{st.session_state.mic_key_counter}"
+)
+
 # --- CONTROLLO ACCESSO MULTI-UTENTE ---
 def login_commerciale():
     if "user_data" not in st.session_state:
