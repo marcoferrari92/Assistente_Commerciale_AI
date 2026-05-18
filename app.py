@@ -152,6 +152,8 @@ if utente_connesso:
     
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     
+   # --- LOGICA INTERFACCIA PRINCIPALE ---
+    
     st.title("🎙️ Imprendo Morpheus")
     st.divider()
     st.write("### 🎤 Assistente Rapido")
@@ -161,46 +163,70 @@ if utente_connesso:
     else:
         # 1. BANNER SEMAFORO NATIVI
         if st.session_state.get("is_processing", False):
-            # STATO GIALLO: Blocco visivo enorme mentre l'AI elabora
             st.warning("⚠️ ATTENDI: L'AI sta elaborando il report...")
         else:
-            # STATO VERDE: Blocco di avvio pronto
             st.success("🟢 READY")
 
-        # --- TRUCCO CSS ISOLATO E MIRATO PER IL BOTTONE DEL MICROFONO ---
+        # --- IL TRUCCO DEL PULSANTE GIGANTE SOVRAPPOSTO ---
+        # Creiamo un contenitore HTML con posizione relativa
         st.markdown("""
             <style>
-            /* Trova il pulsante del microfono e lo trasforma in un bandone gigante */
-            div[data-testid="stCustomComponentV1"] button {
-                width: 100% !important;
-                min-height: 150px !important; /* Altezza massiccia per uso in auto */
-                height: 150px !important;
-                font-size: 26px !important;   /* Testo grande e leggibile */
-                font-weight: bold !important;
-                background-color: #1b5e20 !important; /* Verde Matrix */
-                color: white !important;
-                border: 3px solid #00FF66 !important; /* Bordo neon */
-                border-radius: 15px !important;       /* Angoli leggermente smussati */
-                box-shadow: 0px 8px 16px rgba(0, 255, 102, 0.3) !important;
-                transition: all 0.2s ease-in-out !important;
+            /* Crea l'area del mega bottone nativo */
+            .area-pulsante-auto {
+                position: relative;
+                width: 100%;
+                height: 150px;
+                margin: 20px 0;
             }
             
-            /* Quando il commerciale ci clicca sopra per registrare, diventa Rosso */
-            div[data-testid="stCustomComponentV1"] button:active,
-            div[data-testid="stCustomComponentV1"] button:focus {
-                background-color: #b71c1c !important; /* Rosso */
-                border-color: #ff1744 !important;
-                box-shadow: 0px 8px 16px rgba(255, 23, 68, 0.4) !important;
+            /* Questo è il look del nostro vero pulsante (Verde Matrix) */
+            .bottone-finto-auto {
+                position: absolute;
+                width: 100%;
+                height: 150px;
+                background-color: #1b5e20;
+                color: white;
+                border: 3px solid #00FF66;
+                border-radius: 15px;
+                font-size: 24px;
+                font-weight: bold;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                box-shadow: 0px 8px 16px rgba(0, 255, 102, 0.3);
+                pointer-events: none; /* Ignora i clic, così passano sotto */
+                z-index: 1;
+            }
+            
+            /* Prende l'iframe del microfono vero e lo rende gigante e trasparente sopra il nostro bottone */
+            .area-pulsante-auto div[data-testid="stCustomComponentV1"],
+            .area-pulsante-auto iframe {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100% !important;
+                height: 150px !important;
+                margin: 0 !important;
+                opacity: 0.01; /* Quasi invisibile, ma intercettabile al tocco */
+                z-index: 2; /* Sta SOPRA, quindi riceve il clic del dito */
+                cursor: pointer;
             }
             </style>
         """, unsafe_allow_html=True)
 
-        # 2. IL WIDGET DEL MICROFONO NATIIVO (Stabile al 100%)
+        # Montiamo la struttura: il testo cambia dinamicamente se l'app si ricarica in elaborazione
+        testo_bottone = "⏳ ELABORAZIONE..." if st.session_state.get("is_processing", False) else "🎤 TOCCA E RACCONTA L'EVENTO"
+        
+        # Generiamo il box interattivo
+        st.markdown(f'<div class="area-pulsante-auto"><div class="bottone-finto-auto">{testo_bottone}</div>', unsafe_allow_html=True)
+        
+        # Il microfono vero viene renderizzato dentro il div, posizionandosi sopra grazie al CSS
         audio = mic_recorder(
-            start_prompt="🎤 RACCONTA L'EVENTO", 
-            stop_prompt="⏹️ ELABORA REPORT", 
+            start_prompt="START", 
+            stop_prompt="STOP", 
             key=f"mic_{st.session_state.mic_key_counter}"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # 3. SE IL COMMERCIALE CLICCA STOP
         if audio:
