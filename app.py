@@ -20,7 +20,7 @@ if 'form_data' not in st.session_state:
         "next_step": "",        
         "promemoria": None,
         "orario_promemoria": time(9, 0),
-        "allegati": []  # Nuovo campo nello stato per tracciare i file caricati
+        "allegati": []  
     }
 if 'campi_mancanti' not in st.session_state:
     st.session_state.campi_mancanti = []
@@ -224,86 +224,93 @@ if utente_connesso:
         if nomi_puliti:
             st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
 
-    # --- 5. IL MODULO FORM ---
-    st.write("### 📝 Modulo Evento")
+    # --- CREAZIONE DELLE TAB PER ORGANIZZARE IL LAYOUT ---
+    tab_dati, tab_allegati = st.tabs(["📝 Dati Evento", "📸 Allegati"])
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.session_state.form_data["cliente"] = st.text_input("Cliente", value=st.session_state.form_data["cliente"])
-        st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
-        
-        st.write("**Esito (Vibes):**")
-        v_val = st.session_state.form_data["vibes"]
-        
-        if v_val == "Positivo 👍":
-            v_idx = 0
-        elif v_val == "Negativo 👎":
-            v_idx = 1
-        else:
-            v_idx = None
-        
-        v_scelta = st.radio(
-            "Esito evento", ["Positivo 👍", "Negativo 👎"], 
-            index=v_idx, horizontal=True, label_visibility="collapsed"
-        )
-        st.session_state.form_data["vibes"] = v_scelta
+    # --- TAB 1: DATI DEL FORM EVENTO ---
+    with tab_dati:
+        st.write("### 📝 Dati Principali Evento")
 
-    with col2:
-        t_options = ["telefonata", "email", "visita"]
-        t_val = st.session_state.form_data["tipologia"]
-        t_idx = t_options.index(t_val) if t_val in t_options else 0
-        st.session_state.form_data["tipologia"] = st.selectbox("Tipologia", t_options, index=t_idx)
-        
-        st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
+        # Riga 1: Cliente e Tipologia
+        col_r1_1, col_r1_2 = st.columns(2)
+        with col_r1_1:
+            st.session_state.form_data["cliente"] = st.text_input("Cliente", value=st.session_state.form_data["cliente"])
+        with col_r1_2:
+            t_options = ["telefonata", "email", "visita"]
+            t_val = st.session_state.form_data["tipologia"]
+            t_idx = t_options.index(t_val) if t_val in t_options else 0
+            st.session_state.form_data["tipologia"] = st.selectbox("Tipologia", t_options, index=t_idx)
 
-    st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=150)
-
-    # --- PIANIFICAZIONE AZIONI FUTURE ---
-    st.write("### 🎯 Azioni Future & Scadenze")
-    col_next, col_date = st.columns([2, 1])
-
-    with col_next:
-        st.session_state.form_data["next_step"] = st.text_input(
-            "Prossimo Step (Cosa fare dopo)", 
-            value=st.session_state.form_data["next_step"],
-            placeholder="Es. Inviare quotazione economica"
-        )
-
-    with col_date:
-        current_date_val = st.session_state.form_data["promemoria"]
-        chosen_date = st.date_input(
-            "Data Promemoria", 
-            value=current_date_val if current_date_val else datetime.now().date()
-        )
-        st.session_state.form_data["promemoria"] = chosen_date
-        
-        current_time_val = st.session_state.form_data.get("orario_promemoria", time(9, 0))
-        if current_time_val is None:
-            current_time_val = time(9, 0)
+        # Riga 2: Esito (Vibes) e Oggetto
+        col_r2_1, col_r2_2 = st.columns(2)
+        with col_r2_1:
+            st.write("**Esito (Vibes):**")
+            v_val = st.session_state.form_data["vibes"]
+            if v_val == "Positivo 👍":
+                v_idx = 0
+            elif v_val == "Negativo 👎":
+                v_idx = 1
+            else:
+                v_idx = None
             
-        chosen_time = st.time_input("Orario Specifico", value=current_time_val)
-        st.session_state.form_data["orario_promemoria"] = chosen_time
+            v_scelta = st.radio(
+                "Esito evento", ["Positivo 👍", "Negativo 👎"], 
+                index=v_idx, horizontal=True, label_visibility="collapsed"
+            )
+            st.session_state.form_data["vibes"] = v_scelta
+        with col_r2_2:
+            st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
 
-    # --- NUOVA SEZIONE: CARICAMENTO FOTO O FILE ---
-    st.write("### 📸 Documenti & Foto Allegati")
-    # Consente file multipli, accetta immagini (JPG, PNG) o PDF/fogli di calcolo
-    uploaded_files = st.file_uploader(
-        "Trascina qui i file o tocca per scattare una foto/selezionare un allegato",
-        type=["png", "jpg", "jpeg", "pdf", "docx", "xlsx"],
-        accept_multiple_files=True
-    )
-    
-    # Salviamo i file caricati nello stato dell'app
-    st.session_state.form_data["allegati"] = []
-    if uploaded_files:
-        for file in uploaded_files:
-            st.session_state.form_data["allegati"].append({
-                "nome_file": file.name,
-                "tipo_file": file.type,
-                "dimensione": file.size
-                # Qui puoi estrarre file.getvalue() se ti servono i byte pronti da inviare a un server
-            })
-        st.success(f"📎 {len(uploaded_files)} file caricati pronti per il salvataggio.")
+        # Riga 3: Contatto
+        st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
+
+        # Riga 4: Note Dettagliate
+        st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=150)
+
+        # --- PIANIFICAZIONE AZIONI FUTURE ---
+        st.write("### 🎯 Azioni Future & Scadenze")
+        col_next, col_date = st.columns([2, 1])
+
+        with col_next:
+            st.session_state.form_data["next_step"] = st.text_input(
+                "Prossimo Step (Cosa fare dopo)", 
+                value=st.session_state.form_data["next_step"],
+                placeholder="Es. Inviare quotazione economica"
+            )
+
+        with col_date:
+            current_date_val = st.session_state.form_data["promemoria"]
+            chosen_date = st.date_input(
+                "Data Promemoria", 
+                value=current_date_val if current_date_val else datetime.now().date()
+            )
+            st.session_state.form_data["promemoria"] = chosen_date
+            
+            current_time_val = st.session_state.form_data.get("orario_promemoria", time(9, 0))
+            if current_time_val is None:
+                current_time_val = time(9, 0)
+                
+            chosen_time = st.time_input("Orario Specifico", value=current_time_val)
+            st.session_state.form_data["orario_promemoria"] = chosen_time
+
+    # --- TAB 2: ALLEGATI (FOTO E FILE SEPARATI) ---
+    with tab_allegati:
+        st.write("### 📸 Documenti & Foto Allegati")
+        uploaded_files = st.file_uploader(
+            "Trascina qui i file o tocca per scattare una foto/selezionare un allegato",
+            type=["png", "jpg", "jpeg", "pdf", "docx", "xlsx"],
+            accept_multiple_files=True
+        )
+        
+        st.session_state.form_data["allegati"] = []
+        if uploaded_files:
+            for file in uploaded_files:
+                st.session_state.form_data["allegati"].append({
+                    "nome_file": file.name,
+                    "tipo_file": file.type,
+                    "dimensione": file.size
+                })
+            st.success(f"📎 {len(uploaded_files)} file pronti per essere salvati con questo evento.")
 
     # --- 6. RIASSUNTO VOCALE DI CONFERMA GENERATO DA AI ---
     if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
