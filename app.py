@@ -151,7 +151,7 @@ if utente_connesso:
 
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("🎙️ Imprendo Morpheus")
-    st.divide()
+    st.divider()
     
 
     st.write("### 🎤 Assistente Rapido")
