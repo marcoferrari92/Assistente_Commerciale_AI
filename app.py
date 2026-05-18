@@ -16,7 +16,8 @@ def login_commerciale():
     if st.session_state.user_data:
         return st.session_state.user_data
 
-    st.title("Imprendo HAL9000 - Login")
+    st.title("Imprendo NEO")
+    st.title("Il tuo Assistente AI")
     username = st.text_input("Username (Nome)", key="login_username").lower().strip()
     password = st.text_input("Password", type="password", key="login_password")
     
