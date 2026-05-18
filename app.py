@@ -8,29 +8,6 @@ from datetime import datetime
 # Configurazione di pagina (Eseguita una sola volta all'inizio)
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
 
-# --- CODICE PER LO SFONDO PERSONALIZZATO ---
-# Sostituisci l'URL dentro i parentesi con l'immagine Matrix che preferisci
-url_sfondo = "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5" 
-
-st.markdown(
-    f"""
-    <style>
-    .stApp {{
-        background-image: linear-gradient(rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.85)), url("{url_sfondo}");
-        background-attachment: fixed;
-        background-size: cover;
-        background-position: center;
-    }}
-    
-    /* Rende i testi più leggibili sopra lo sfondo scuro */
-    h1, h2, h3, p, label {{
-        color: #00FF66 !important; /* Verde Matrix */
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 # --- CONTROLLO ACCESSO MULTI-UTENTE ---
 def login_commerciale():
     if "user_data" not in st.session_state:
