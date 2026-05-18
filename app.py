@@ -3,6 +3,7 @@ from openai import OpenAI
 from streamlit_mic_recorder import mic_recorder
 import io
 import json
+from datetime import datetime
 
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
 
@@ -14,12 +15,14 @@ if 'form_data' not in st.session_state:
         "oggetto": "",
         "contatto": "",
         "vibes": "Positive 👍",
-        "note": ""
+        "note": "",
+        "next_step": "",       # NUOVO CAMPO
+        "promemoria": None     # NUOVO CAMPO (Data)
     }
 if 'audio_summary_done' not in st.session_state:
     st.session_state.audio_summary_done = False
 
-# NUOVO: Contatore per cambiare la chiave del microfono ed evitare il loop
+# Contatore per cambiare la chiave del microfono ed evitare il loop
 if 'mic_key_counter' not in st.session_state:
     st.session_state.mic_key_counter = 0
 
@@ -29,7 +32,8 @@ with st.sidebar:
     api_key = st.text_input("OpenAI API Key", type="password", key="main_api_key")
     if st.button("🗑️ Svuota Modulo"):
         st.session_state.form_data = {k: "" if k != "tipologia" else "telefonata" for k in st.session_state.form_data}
-        st.session_state.form_data["Esito incontro"] = "Positivo 👍"
+        st.session_state.form_data["vibes"] = "Positivo 👍"
+        st.session_state.form_data["promemoria"] = None
         st.session_state.audio_summary_done = False
         st.session_state.mic_key_counter += 1 # Reset microfono
         st.rerun()
@@ -52,11 +56,13 @@ def analyze_full_report(audio_bytes):
     audio_file.name = "audio.mp3"
     transcript = client.audio.transcriptions.create(model="whisper-1", file=audio_file, language="it")
     
-    # Manteniamo ESATTAMENTE il tuo prompt originale
-    prompt = """
+    # Prompt aggiornato con la data odierna come contesto per i promemoria relativi (es. "prossimo lunedì")
+    current_date_str = datetime.now().strftime("%Y-%m-%d")
+    
+    prompt = f"""
     Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
     Analizza il suo rapporto e restituisci un JSON.
-    I campi sono: cliente, tipologia, oggetto, contatto, vibes, note.
+    I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria.
 
     REGOLE PER IL CAMPO "contatto"
     - Inserisce nome e cognome se noti e tra parentesi l'ufficio o l'area aziendale del contatto.
@@ -74,10 +80,18 @@ def analyze_full_report(audio_bytes):
     - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 10 parole.
     - Se non dice nulla di utile per l'oggetto, scrivi null.
 
-    REGOLE PER LE NOTE
-    - Inserisci le impressioni del commerciale sull'oggetto dell'evento
-    - Inserisci tutte le note tecniche in modo esaustivo
+    REGOLE PER LE NOTE:
+    - Inserisci le impressioni del commerciale sull'oggetto dell'evento.
+    - Inserisci tutte le note tecniche in modo esaustivo.
     
+    REGOLE PER IL CAMPO 'next_step':
+    - Identifica l'azione futura concordata o pianificata (es. "Inviare preventivo", "Richiamare per conferma", "Fissare demo").
+    - Se non viene menzionata nessuna azione futura, scrivi null.
+    
+    REGOLE PER IL CAMPO 'promemoria':
+    - Identifica la data in cui il commerciale desidera essere avvisato o in cui è previsto il next step.
+    - Sapendo che OGGI è il {current_date_str}, converti espressioni temporali (es. "domani", "prossima settimana", "il 25 maggio") nel formato standard YYYY-MM-DD.
+    - Se non viene specificata alcuna data o periodo di tempo, scrivi null.
 
     Se un dato manca, usa null.
     Aggiungi il campo 'mancanti' con la lista dei campi null.
@@ -100,7 +114,6 @@ st.write("### 🎤 Assistente Rapido")
 if not api_key:
     st.warning("Inserisci l'API Key per usare l'assistente vocale.")
 else:
-    # MODIFICA: Usiamo una chiave dinamica (mic_key_counter) per resettare il widget
     audio = mic_recorder(
         start_prompt="🎤 Racconta l'evento ", 
         stop_prompt="🤓 Elabora l'audio", 
@@ -114,11 +127,18 @@ else:
                 # Aggiorniamo lo stato con i dati dell'AI
                 for k in st.session_state.form_data.keys():
                     if k in res and res[k]: 
-                        st.session_state.form_data[k] = res[k]
+                        if k == "promemoria":
+                            try:
+                                # Converte la stringa della data dall'AI in oggetto datetime.date per lo Streamit date_input
+                                st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
+                            except:
+                                st.session_state.form_data[k] = None
+                        else:
+                            st.session_state.form_data[k] = res[k]
                 
                 # RESET PER EVITARE LOOP:
                 st.session_state.audio_summary_done = False 
-                st.session_state.mic_key_counter += 1 # Fondamentale: cambia ID al microfono
+                st.session_state.mic_key_counter += 1 
                 st.rerun()
 
 st.divider()
@@ -132,7 +152,6 @@ with col1:
     st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
     
     st.write("**Esito (Vibes):**")
-    # Pulizia vibes per evitare errori di indice
     v_val = st.session_state.form_data["vibes"]
     v_idx = 1 if v_val and "Negative" in v_val else 0
     
@@ -149,13 +168,39 @@ with col2:
     
     st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
 
-st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=200)
+st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=150)
 
-# --- 6. RIASSUNTO VOCALE DI CONFERMA (Riepilogo completo di tutte le voci) ---
+# --- NUOVA SEZIONE: PIANIFICAZIONE AZIONI FUTURE ---
+st.write("### 🎯 Azioni Future & Scadenze")
+col_next, col_date = st.columns([2, 1])
+
+with col_next:
+    st.session_state.form_data["next_step"] = st.text_input(
+        "Prossimo Step (Cosa fare dopo)", 
+        value=st.session_state.form_data["next_step"],
+        placeholder="Es. Inviare quotazione economica"
+    )
+
+with col_date:
+    # Gestione del valore di default del date_input (non può essere una stringa vuota)
+    current_date_val = st.session_state.form_data["promemoria"]
+    
+    # Visualizza il widget della data (se None di default, mette la data di oggi)
+    chosen_date = st.date_input(
+        "Data Promemoria", 
+        value=current_date_val if current_date_val else datetime.now().date()
+    )
+    
+    # Se l'utente non ha rimosso o modificato la data in modo errato, la salviamo
+    st.session_state.form_data["promemoria"] = chosen_date
+
+# --- 6. RIASSUNTO VOCALE DI CONFERMA (Incluso Next Step e Promemoria) ---
 if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
     d = st.session_state.form_data
     
-    # Costruiamo un messaggio che includa tutti i campi del modulo
+    promemoria_str = d['promemoria'].strftime('%d/%m/%Y') if d['promemoria'] else 'non impostato'
+    
+    # Costruiamo il messaggio vocale includendo i nuovi parametri
     testo_riepilogo = (
         f"Ricevuto. Ecco il riepilogo completo dell'evento. "
         f"Cliente: {d['cliente']}. "
@@ -164,6 +209,8 @@ if st.session_state.form_data["note"] != "" and not st.session_state.audio_summa
         f"Oggetto: {d['oggetto']}. "
         f"Note: {d['note']}. "
         f"Esito dell'incontro: {d['vibes']}. "
+        f"Prossimo passo: {d['next_step'] if d['next_step'] else 'nessuno specificato'}. "
+        f"Data di promemoria: {promemoria_str}. "
         f"Se è tutto corretto, procedi pure con il salvataggio."
     )
     
@@ -178,4 +225,10 @@ st.divider()
 if st.button("💾 SALVA EVENTO SUL DATABASE", type="primary", use_container_width=True):
     st.balloons()
     st.success("Evento registrato correttamente!")
-    st.write("Dati inviati:", st.session_state.form_data)
+    
+    # Prepariamo i dati finali convertendo la data in stringa leggibile per il DB/JSON output
+    final_data = st.session_state.form_data.copy()
+    if final_data["promemoria"]:
+        final_data["promemoria"] = final_data["promemoria"].strftime("%Y-%m-%d")
+        
+    st.write("Dati inviati:", final_data)
