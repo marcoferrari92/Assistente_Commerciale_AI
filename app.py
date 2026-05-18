@@ -19,8 +19,8 @@ if 'form_data' not in st.session_state:
         "note": "",
         "next_step": "",        
         "promemoria": None,
-        # Default preimpostato come oggetto time alle 09:00
-        "orario_promemoria": time(9, 0)  
+        "orario_promemoria": time(9, 0),
+        "allegati": []  # Nuovo campo nello stato per tracciare i file caricati
     }
 if 'campi_mancanti' not in st.session_state:
     st.session_state.campi_mancanti = []
@@ -195,7 +195,7 @@ if utente_connesso:
                                 if k == "promemoria" or k == "vibes":
                                     st.session_state.form_data[k] = None
                                 elif k == "orario_promemoria":
-                                    st.session_state.form_data[k] = time(9, 0) # Fallback su oggetto time
+                                    st.session_state.form_data[k] = time(9, 0)
                                 else:
                                     st.session_state.form_data[k] = ""
                             else:
@@ -206,7 +206,6 @@ if utente_connesso:
                                         st.session_state.form_data[k] = None
                                 elif k == "orario_promemoria":
                                     try:
-                                        # Convertiamo la stringa oraria "HH:MM" dell'AI in un vero oggetto time di Python
                                         st.session_state.form_data[k] = datetime.strptime(res[k], "%H:%M").time()
                                     except:
                                         st.session_state.form_data[k] = time(9, 0)
@@ -219,7 +218,7 @@ if utente_connesso:
 
     st.divider()
 
-    # --- FEEDBACK DEI CAMPI MANCANTI (ALERT AGGIUNTIVO) ---
+    # --- FEEDBACK DEI CAMPI MANCANTI ---
     if st.session_state.campi_mancanti:
         nomi_puliti = [c.replace("_", " ").capitalize() for c in st.session_state.campi_mancanti if c != "orario_promemoria"]
         if nomi_puliti:
@@ -278,7 +277,6 @@ if utente_connesso:
         )
         st.session_state.form_data["promemoria"] = chosen_date
         
-        # WIDGET PREIMPOSTATO DI STREAMLIT PER GLI ORARI (st.time_input)
         current_time_val = st.session_state.form_data.get("orario_promemoria", time(9, 0))
         if current_time_val is None:
             current_time_val = time(9, 0)
@@ -286,12 +284,31 @@ if utente_connesso:
         chosen_time = st.time_input("Orario Specifico", value=current_time_val)
         st.session_state.form_data["orario_promemoria"] = chosen_time
 
+    # --- NUOVA SEZIONE: CARICAMENTO FOTO O FILE ---
+    st.write("### 📸 Documenti & Foto Allegati")
+    # Consente file multipli, accetta immagini (JPG, PNG) o PDF/fogli di calcolo
+    uploaded_files = st.file_uploader(
+        "Trascina qui i file o tocca per scattare una foto/selezionare un allegato",
+        type=["png", "jpg", "jpeg", "pdf", "docx", "xlsx"],
+        accept_multiple_files=True
+    )
+    
+    # Salviamo i file caricati nello stato dell'app
+    st.session_state.form_data["allegati"] = []
+    if uploaded_files:
+        for file in uploaded_files:
+            st.session_state.form_data["allegati"].append({
+                "nome_file": file.name,
+                "tipo_file": file.type,
+                "dimensione": file.size
+                # Qui puoi estrarre file.getvalue() se ti servono i byte pronti da inviare a un server
+            })
+        st.success(f"📎 {len(uploaded_files)} file caricati pronti per il salvataggio.")
+
     # --- 6. RIASSUNTO VOCALE DI CONFERMA GENERATO DA AI ---
     if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
         d = st.session_state.form_data
         promemoria_str = d['promemoria'].strftime('%d/%m/%Y') if d['promemoria'] else 'non impostato'
-        
-        # Formattiamo l'oggetto time in stringa leggibile HH:MM per il riassunto vocale
         orario_str = d['orario_promemoria'].strftime('%H:%M') if d['orario_promemoria'] else '09:00'
         
         with st.spinner("Morpheus sta preparando il riepilogo vocale..."):
@@ -344,7 +361,6 @@ if utente_connesso:
             final_data["promemoria"] = final_data["promemoria"].strftime("%Y-%m-%d")
             
         if final_data["orario_promemoria"]:
-            # Convertiamo l'oggetto time in stringa prima di inviarlo al database / stamparlo
             final_data["orario_promemoria"] = final_data["orario_promemoria"].strftime("%H:%M")
             
         st.write("Dati inviati:", final_data)
