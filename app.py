@@ -142,43 +142,47 @@ if utente_connesso:
     # --- LOGICA INTERFACCIA PRINCIPALE ---
     st.title("🎙️ Imprendo Morpheus")
     
-    # CSS MIRATO PER IL COMPONENTE DEL MICROFONO
+    # NUOVO CSS: Penetra l'iframe del custom component senza toccare i bottoni di Streamlit
     st.markdown("""
         <style>
-        /* Trova l'iframe del componente mic_recorder, centra il suo div interno e trasforma il pulsante in un cerchio */
-        div[data-testid="stCustomComponentV1"] {
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
+        /* Trova l'iframe del custom component e forza le dimensioni del contenitore */
+        iframe[title="streamlit_mic_recorder.mic_recorder"] {
+            width: 240px !important;
+            height: 240px !important;
+            max-height: 240px !important;
+            max-width: 240px !important;
+            display: block !important;
             margin: 30px auto !important;
-            width: 100% !important;
         }
 
-        div[data-testid="stCustomComponentV1"] button {
-            width: 200px !important;
-            height: 200px !important;
-            min-height: 200px !important;
-            max-width: 200px !important;
-            border-radius: 50% !important; /* Lo rende perfettamente rotondo */
-            font-size: 20px !important;
+        /* Colpisce il bottone del microfono ovunque si nasconda dentro il componente custom */
+        [data-testid="stCustomComponentV1"] button,
+        iframe + div button,
+        .element-container iframe + div button {
+            width: 220px !important;
+            height: 220px !important;
+            min-height: 220px !important;
+            max-width: 220px !important;
+            border-radius: 50% !important; /* ROtondo perfetto */
+            font-size: 22px !important;
             font-weight: bold !important;
-            line-height: 1.4 !important;
+            line-height: 1.3 !important;
             background-color: #1b5e20 !important; /* Verde Matrix */
             color: white !important;
-            border: 5px solid #00FF66 !important; /* Cerchio neon esterno */
+            border: 5px solid #00FF66 !important; /* Neon */
             box-shadow: 0px 10px 25px rgba(0, 255, 102, 0.4) !important;
             transition: all 0.2s ease-in-out !important;
-            white-space: pre-line !important; /* Rispetta i ritorni a capo (\n) nel testo */
             display: flex !important;
             justify-content: center !important;
             align-items: center !important;
             text-align: center !important;
+            white-space: pre-line !important;
         }
         
-        /* Stato attivo / Registrazione in corso */
-        div[data-testid="stCustomComponentV1"] button:active,
-        div[data-testid="stCustomComponentV1"] button:focus {
-            background-color: #b71c1c !important; /* Rosso Matrix */
+        /* Stato attivo (Rosso in registrazione) */
+        [data-testid="stCustomComponentV1"] button:active,
+        [data-testid="stCustomComponentV1"] button:focus {
+            background-color: #b71c1c !important; 
             border-color: #ff1744 !important;
             box-shadow: 0px 10px 25px rgba(255, 23, 68, 0.5) !important;
         }
