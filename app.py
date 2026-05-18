@@ -195,7 +195,6 @@ if utente_connesso:
             """
             
             # --- STRUTTURA LOGICA DI INVIO (DA IMPLEMENTARE) ---
-            # Nel tuo backend farai una cosa simile:
             # account = Account(credentials)
             # calendar = account.schedule().get_default_calendar()
             # new_event = calendar.new_event()
