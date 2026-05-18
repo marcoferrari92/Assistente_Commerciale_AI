@@ -230,8 +230,9 @@ if utente_connesso:
     tab_dati, tab_allegati = st.tabs(["📝 Evento", "📸 Allegati"])
 
     # --- TAB 1: DATI DEL FORM EVENTO ---
-    st.write("")
     with tab_dati:
+        st.write("")
+        st.write("")
         st.write("### Evento")
 
         # Riga 1: Cliente e Tipologia
