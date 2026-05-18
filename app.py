@@ -15,11 +15,14 @@ if 'form_data' not in st.session_state:
         "tipologia": "telefonata",
         "oggetto": "",
         "contatto": "",
-        "vibes": "Positive 👍",
+        "vibes": None,  # Inizializzato a None per intercettare il null iniziale
         "note": "",
         "next_step": "",        
         "promemoria": None     
     }
+if 'campi_mancanti' not in st.session_state:
+    st.session_state.campi_mancanti = []
+
 if 'audio_summary_done' not in st.session_state:
     st.session_state.audio_summary_done = False
 
@@ -163,7 +166,6 @@ if utente_connesso:
     if not client:
         st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
     else:
-        # Il widget del microfono elabora i dati in modo lineare senza forzare rerun intermedio
         audio = mic_recorder(
             start_prompt="🎤 RACCONTA L'EVENTO", 
             stop_prompt="⏹️ ELABORA REPORT", 
@@ -174,22 +176,38 @@ if utente_connesso:
             with st.spinner("Morpheus sta scrivendo i dati..."):
                 res = analyze_full_report(audio['bytes'])
                 if res:
-                    for k in st.session_state.form_data.keys():
-                        if k in res and res[k]: 
-                            if k == "promemoria":
-                                try:
-                                    st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
-                                except:
-                                    st.session_state.form_data[k] = None
-                            else:
-                                st.session_state.form_data[k] = res[k]
+                    # Salviamo la lista dei campi rilevati come null dall'AI
+                    st.session_state.campi_mancanti = res.get("mancanti", [])
                     
-                    # Reset pulito dei flag per sbloccare l'applicazione
+                    for k in st.session_state.form_data.keys():
+                        if k in res:
+                            # CORREZIONE CRITICA: Se il valore nel JSON è nullo o vuoto, 
+                            # lo forziamo esplicitamente a None/stringa vuota nello stato
+                            if res[k] is None:
+                                if k == "promemoria" or k == "vibes":
+                                    st.session_state.form_data[k] = None
+                                else:
+                                    st.session_state.form_data[k] = ""
+                            else:
+                                if k == "promemoria":
+                                    try:
+                                        st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
+                                    except:
+                                        st.session_state.form_data[k] = None
+                                else:
+                                    st.session_state.form_data[k] = res[k]
+                    
                     st.session_state.audio_summary_done = False 
                     st.session_state.mic_key_counter += 1 
                     st.rerun()
 
     st.divider()
+
+    # --- FEEDBACK DEI CAMPI MANCANTI (ALERT AGGIUNTIVO) ---
+    if st.session_state.campi_mancanti:
+        # Puliamo i nomi dei campi per renderli leggibili all'utente
+        nomi_puliti = [c.replace("_", " ").capitalize() for c in st.session_state.campi_mancanti]
+        st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
 
     # --- 5. IL MODULO FORM ---
     st.write("### 📝 Modulo Evento")
@@ -201,12 +219,21 @@ if utente_connesso:
         
         st.write("**Esito (Vibes):**")
         v_val = st.session_state.form_data["vibes"]
-        v_idx = 1 if v_val and "Negative" in v_val else 0
         
-        st.session_state.form_data["vibes"] = st.radio(
+        # Gestione dell'indice del Radio Button adattata per supportare l'assenza di selezione (null)
+        if v_val == "Positivo 👍":
+            v_idx = 0
+        elif v_val == "Negativo 👎":
+            v_idx = 1
+        else:
+            v_idx = None # Nessuna pre-selezione se l'AI ha risposto null
+        
+        # Se v_idx è None, mostriamo il widget senza una scelta attiva iniziale
+        v_scelta = st.radio(
             "Esito evento", ["Positivo 👍", "Negativo 👎"], 
             index=v_idx, horizontal=True, label_visibility="collapsed"
         )
+        st.session_state.form_data["vibes"] = v_scelta
 
     with col2:
         t_options = ["telefonata", "email", "visita"]
@@ -267,3 +294,6 @@ if utente_connesso:
             final_data["promemoria"] = final_data["promemoria"].strftime("%Y-%m-%d")
             
         st.write("Dati inviati:", final_data)
+        
+        # Pulizia della lista errori dopo il salvataggio andato a buon fine
+        st.session_state.campi_mancanti = []
