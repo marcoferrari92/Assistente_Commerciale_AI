@@ -4,6 +4,7 @@ from streamlit_mic_recorder import mic_recorder
 import io
 import json
 from datetime import datetime
+import base64
 
 # --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
@@ -21,7 +22,6 @@ if 'form_data' not in st.session_state:
         "promemoria": None     
     }
 
-# Questo flag conterrà l'audio generato da riprodurre una sola volta
 if 'audio_to_play' not in st.session_state:
     st.session_state.audio_to_play = None
 
@@ -193,7 +193,7 @@ if utente_connesso:
                         else:
                             st.session_state.form_data[k] = res[k]
                 
-                # CREAZIONE AUDIO DI CONFERMA: Lo facciamo qui, una volta sola, prima del rerun!
+                # CREAZIONE AUDIO DI CONFERMA
                 promemoria_str = st.session_state.form_data['promemoria'].strftime('%d/%m/%Y') if st.session_state.form_data['promemoria'] else 'non impostato'
                 testo_riepilogo = (
                     f"Ricevuto. Ecco il riepilogo completo dell'evento. "
@@ -203,8 +203,12 @@ if utente_connesso:
                     f"Data di promemoria: {promemoria_str}."
                 )
                 
-                # Salviamo il file audio nello stato globale prima di rinfrescare l'app
-                st.session_state.audio_to_play = speak(testo_riepilogo)
+                # Otteniamo i byte dell'audio
+                audio_bytes_data = speak(testo_riepilogo)
+                if audio_bytes_data:
+                    # Lo codifichiamo in Base64 per passarlo all'HTML protetto ed evitare i loop di Streamlit
+                    b64_audio = base64.b64encode(audio_bytes_data).decode()
+                    st.session_state.audio_to_play = f"data:audio/mp3;base64,{b64_audio}"
                 
                 # Reset dei flag di elaborazione
                 st.session_state.is_processing = False
@@ -213,12 +217,15 @@ if utente_connesso:
 
     st.divider()
 
-    # --- RIPRODUZIONE AUDIO "ONE-SHOT" ---
-    # Se c'è un file audio pronto in memoria, lo riproduce e poi lo cancella subito.
-    # Questo distrugge al 100% qualsiasi possibilità di loop infinito!
+    # --- RIPRODUZIONE AUDIO ISOLATA (Bypassa i loop del server) ---
     if st.session_state.audio_to_play:
-        st.audio(st.session_state.audio_to_play, autoplay=True)
-        st.session_state.audio_to_play = None # Svuota la memoria dopo l'autoplay
+        # Iniettiamo un micro-componente HTML invisibile che suona la traccia e si autodistrugge
+        st.components.v1.html(
+            f'<audio autoplay src="{st.session_state.audio_to_play}"></audio>',
+            height=0,
+            width=0
+        )
+        st.session_state.audio_to_play = None # Pulizia istantanea dello stato globale
 
     # --- 5. IL MODULO FORM ---
     st.write("### 📝 Modulo Evento")
