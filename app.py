@@ -20,6 +20,7 @@ if 'form_data' not in st.session_state:
         "next_step": "",        
         "promemoria": None,
         "orario_promemoria": time(9, 0),
+        "salva_su_calendario": False, # Nuovo flag booleano per l'integrazione futura
         "allegati": []  
     }
 if 'campi_mancanti' not in st.session_state:
@@ -129,7 +130,7 @@ if utente_connesso:
 
         REGOLE PER IL CAMPO 'vibes':
         - Analizza il tono di voce e le parole del commerciale per capire l'esito dell'incontro o della telefonata.
-        - Se l'incontro è andato bene, c'è interesse, o l'accordo è positivo, scrivi ESATTAMENTE "Positivo 👍".
+        - Se l'incontro è andato bene, c'clock interesse, o l'accordo è positivo, scrivi ESATTAMENTE "Positivo 👍".
         - Se ci sono stati problemi, lamentele, esito negativo o chiusura, scrivi ESATTAMENTE "Negativo 👎".
         - CRITICO: Se l'utente non esprime un'opinione chiara, se il tono è neutro o se non riesci a capire l'esito dal racconto, scrivi null. Non inventare o ipotizzare.
 
@@ -203,6 +204,8 @@ if utente_connesso:
                                 if k == "promemoria":
                                     try:
                                         st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
+                                        # Se l'AI estrae una data valida, pre-attiviamo il toggle per comodità
+                                        st.session_state.form_data["salva_su_calendario"] = True
                                     except:
                                         st.session_state.form_data[k] = None
                                 elif k == "orario_promemoria":
@@ -274,29 +277,40 @@ if utente_connesso:
         st.write("")
         st.write("")
         st.write("### Azioni Future & Scadenze")
-        col_next, col_date = st.columns([2, 1])
+        
+        # Campo di testo per il Prossimo Step sempre visibile
+        st.session_state.form_data["next_step"] = st.text_input(
+            "Prossimo Step (Cosa fare dopo)", 
+            value=st.session_state.form_data["next_step"],
+            placeholder="Es. Inviare quotazione economica"
+        )
+        
+        # TOGGLE NATIVO: Attiva o disattiva la pianificazione sul calendario
+        is_calendar_enabled = st.toggle(
+            "📅 Attiva Promemoria su Calendario", 
+            value=st.session_state.form_data.get("salva_su_calendario", False)
+        )
+        st.session_state.form_data["salva_su_calendario"] = is_calendar_enabled
 
-        with col_next:
-            st.session_state.form_data["next_step"] = st.text_input(
-                "Prossimo Step (Cosa fare dopo)", 
-                value=st.session_state.form_data["next_step"],
-                placeholder="Es. Inviare quotazione economica"
-            )
-
-        with col_date:
-            current_date_val = st.session_state.form_data["promemoria"]
-            chosen_date = st.date_input(
-                "Data Promemoria", 
-                value=current_date_val if current_date_val else datetime.now().date()
-            )
-            st.session_state.form_data["promemoria"] = chosen_date
+        # Se il toggle è attivo, mostriamo i selettori di Data e Ora
+        if is_calendar_enabled:
+            col_date, col_time = st.columns(2)
             
-            current_time_val = st.session_state.form_data.get("orario_promemoria", time(9, 0))
-            if current_time_val is None:
-                current_time_val = time(9, 0)
+            with col_date:
+                current_date_val = st.session_state.form_data["promemoria"]
+                chosen_date = st.date_input(
+                    "Data Promemoria", 
+                    value=current_date_val if current_date_val else datetime.now().date()
+                )
+                st.session_state.form_data["promemoria"] = chosen_date
                 
-            chosen_time = st.time_input("Orario Specifico", value=current_time_val)
-            st.session_state.form_data["orario_promemoria"] = chosen_time
+            with col_time:
+                current_time_val = st.session_state.form_data.get("orario_promemoria", time(9, 0))
+                if current_time_val is None:
+                    current_time_val = time(9, 0)
+                    
+                chosen_time = st.time_input("Orario Specifico", value=current_time_val)
+                st.session_state.form_data["orario_promemoria"] = chosen_time
 
     # --- TAB 2: ALLEGATI (FOTO E FILE SEPARATI) ---
     with tab_allegati:
@@ -304,7 +318,6 @@ if utente_connesso:
         st.write("### Allegati")
         st.write("")
         st.write("")
-        #st.write("### 📸 Documenti & Foto Allegati")
         uploaded_files = st.file_uploader(
             "Trascina qui i file o tocca per scattare una foto/selezionare un allegato",
             type=["png", "jpg", "jpeg", "pdf", "docx", "xlsx"],
@@ -349,7 +362,7 @@ if utente_connesso:
             - Riassumi brevemente il fulcro delle note.
             - COMUNICA L'ORARIO: Nel riassunto, specifica l'orario esatto che hai assegnato per il calendario (es. "...e ho impostato il promemoria per il {promemoria_str} alle ore {orario_str}"). Rendi la frase naturale.
             - Chiudi dicendo che se è tutto corretto si può procedere con il salvataggio.
-            - Non usare elenchi puntati, numeri o asterischi, scrivi solo testo liscio da leggere direttamente.
+            - Non usare elenchi puntati, numbers o asterischi, scrivi solo testo liscio da leggere direttamente.
             """
             
             try:
