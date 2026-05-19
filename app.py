@@ -32,8 +32,16 @@ if 'audio_summary_done' not in st.session_state:
 if 'mic_key_counter' not in st.session_state:
     st.session_state.mic_key_counter = 0
 
+# Inizializzazione stati per la nuova tab di condivisione email
+if "email_collega" not in st.session_state:
+    st.session_state.email_collega = ""
+if "messaggio_email_personalizzato" not in st.session_state:
+    st.session_state.messaggio_email_personalizzato = ""
+if "invia_email_attivo" not in st.session_state:
+    st.session_state.invia_email_attivo = False
 
-# --- 3. FUNZIONE DI SINCRO CON MICROSOFT EXCHANGE (POSIZIONATA CORRETTAMENTE) ---
+
+# --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
 def crea_evento_su_exchange(user_email, dati_evento):
     from O365 import Account
     
@@ -49,7 +57,8 @@ def crea_evento_su_exchange(user_email, dati_evento):
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    scopes = ['calendars.readwrite']
+    # Aggiornato per includere sia calendario che invio mail
+    scopes = ['calendars.readwrite', 'mail.send']
     
     # Inizializziamo l'account usando le variabili protette
     account = Account(credentials, tenant_id=tenant_id)
@@ -87,6 +96,70 @@ def crea_evento_su_exchange(user_email, dati_evento):
         
     except Exception as e:
         st.error(f"Errore durante l'invio dell'evento a Exchange: {e}")
+        return False
+
+
+def invia_email_collega(user_email, email_collega, dati_evento, messaggio_personalizzato="", file_caricati=None):
+    from O365 import Account
+    
+    if "microsoft_exchange" not in st.secrets:
+        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets!")
+        return False
+        
+    credentials = (
+        st.secrets["microsoft_exchange"]["client_id"], 
+        st.secrets["microsoft_exchange"]["client_secret"]
+    )
+    tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
+    scopes = ['calendars.readwrite', 'mail.send']
+    
+    account = Account(credentials, tenant_id=tenant_id)
+    
+    if not account.is_authenticated:
+        st.error("⚠️ L'applicazione non è autenticata su Microsoft Office 365.")
+        return False
+
+    try:
+        mailbox = account.mailbox(resource=user_email)
+        message = mailbox.new_message()
+        
+        message.to.add(email_collega)
+        message.subject = f"📋 Condivisione Evento CRM: {dati_evento['cliente']} - {dati_evento['oggetto']}"
+        
+        promemoria_str = dati_evento['promemoria'].strftime('%d/%m/%Y') if dati_evento['promemoria'] else 'Non impostato'
+        orario_str = dati_evento['orario_promemoria'].strftime('%H:%M') if dati_evento['orario_promemoria'] else '09:00'
+        
+        corpo_email = ""
+        if messaggio_personalizzato:
+            corpo_email += f"Nota del collega:\n\"{messaggio_personalizzato}\"\n\n"
+            corpo_email += "-----------------------------------------\n\n"
+            
+        corpo_email += f"Ecco i dettagli dell'evento registrato da {user_email}:\n\n"
+        corpo_email += f"🏢 Cliente: {dati_evento['cliente']}\n"
+        corpo_email += f"📞 Tipologia: {dati_evento['tipologia'].capitalize()}\n"
+        corpo_email += f"🎯 Oggetto: {dati_evento['oggetto']}\n"
+        corpo_email += f"👤 Contatto: {dati_evento['contatto']}\n"
+        corpo_email += f"🎭 Vibes: {dati_evento['vibes']}\n\n"
+        corpo_email += f"📝 Note:\n{dati_evento['note']}\n\n"
+        corpo_email += f"🚀 Prossimo Step: {dati_evento['next_step']}\n"
+        corpo_email += f"🔔 Promemoria Calendario: {promemoria_str} alle ore {orario_str}\n"
+        
+        message.body = corpo_email
+
+        # --- AGGIUNTA DEGLI ALLEGATI REALI ---
+        if file_caricati:
+            for file in file_caricati:
+                # Leggiamo il contenuto binario del file caricato in Streamlit
+                file_bytes = file.getvalue()
+                # Aggiungiamo l'allegato passandogli i byte in memoria e il nome corretto
+                message.attachments.add([(file.name, file_bytes)])
+        
+        message.send()
+        st.success(f"📧 Email inviata con successo a {email_collega} con i relativi allegati!")
+        return True
+        
+    except Exception as e:
+        st.error(f"Errore durante l'invio dell'email: {e}")
         return False
 
 
@@ -291,7 +364,7 @@ if utente_connesso:
             st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
 
     # --- CREAZIONE DELLE TAB ---
-    tab_dati, tab_allegati = st.tabs(["📝 Evento", "📸 Allegati"])
+    tab_dati, tab_allegati, tab_condividi = st.tabs(["📝 Evento", "📸 Allegati", "✉️ Condividi"])
 
     # --- TAB 1: DATI DEL FORM EVENTO ---
     with tab_dati:
@@ -385,6 +458,30 @@ if utente_connesso:
                 })
             st.success(f"📎 {len(uploaded_files)} file pronti per essere salvati con questo evento.")
 
+    # --- TAB 3: CONDIVISIONE EMAIL ---
+    with tab_condividi:
+        st.write("")
+        st.write("### Condividi questo evento via Email")
+        st.write("Invia un riepilogo dettagliato di questo evento direttamente alla casella postale di un tuo collega.")
+        
+        st.session_state.email_collega = st.text_input(
+            "Email del collega", 
+            value=st.session_state.email_collega,
+            placeholder="esempio@azienda.com"
+        )
+        
+        st.session_state.messaggio_email_personalizzato = st.text_area(
+            "Aggiungi un messaggio o una nota per il collega (Opzionale)",
+            value=st.session_state.messaggio_email_personalizzato,
+            placeholder="Es. Ciao, ti giro questo report perché il cliente ha chiesto informazioni sulla tua area...",
+            height=100
+        )
+        
+        st.session_state.invia_email_attivo = st.toggle(
+            "✉️ Invia l'email automaticamente quando premi 'SALVA EVENTO'", 
+            value=st.session_state.invia_email_attivo
+        )
+
     # --- 6. RIASSUNTO VOCALE DI CONFERMA ---
     if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
         d = st.session_state.form_data
@@ -439,6 +536,16 @@ if utente_connesso:
         # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
         if st.session_state.form_data["salva_su_calendario"]:
             crea_evento_su_exchange(utente_connesso["email"], st.session_state.form_data)
+            
+        # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
+        if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
+            with st.spinner("Invio della mail al collega in corso..."):
+                invia_email_collega(
+                    user_email=utente_connesso["email"],
+                    email_collega=st.session_state.email_collega,
+                    dati_evento=st.session_state.form_data,
+                    messaggio_personalizzato=st.session_state.messaggio_email_personalizzato
+                )
         
         final_data = st.session_state.form_data.copy()
         if final_data["promemoria"]:
@@ -448,4 +555,9 @@ if utente_connesso:
             final_data["orario_promemoria"] = final_data["orario_promemoria"].strftime("%H:%M")
             
         st.write("Dati inviati:", final_data)
+        
+        # Reset dei campi specifici e degli avvisi
         st.session_state.campi_mancanti = []
+        st.session_state.email_collega = ""
+        st.session_state.messaggio_email_personalizzato = ""
+        st.session_state.invia_email_attivo = False
