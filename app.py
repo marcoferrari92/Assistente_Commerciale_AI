@@ -240,10 +240,6 @@ if utente_connesso:
         Analizza il suo rapporto e restituisci un JSON.
         I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega.
 
-        REGOLE PER IL CAMPO "nota_collega":
-        - Se nel testo l'utente dice qualcosa destinato a un collega (es: "scrivi al collega che...", "lascia una nota per il mio collega", "comunica a X che..."), estrai questa informazione e inseriscila qui.
-        - Se non viene rilevato alcun messaggio esplicito per un collega, scrivi null.
-
         REGOLE PER IL CAMPO "contatto"
         - Inserisce nome e cognome se noti e tra parentesi l'ufficio o l'area aziendale del contatto.
 
@@ -272,7 +268,7 @@ if utente_connesso:
         
         REGOLE PER IL CAMPO 'next_step' (MODIFICATO):
         - Identifica l'azione futura concordata o pianificata.
-        - CRITICO: Se l'utente menziona una data o un orario per questa azione (es. "il 25 Giugno alle 17"), formattali esplicitamente all'interno della stringa stessa del next_step usando la struttura: "[Azione] [DD/MM/YYYY] ore [HH:MM]" (es. "consegna preventivo al cliente 25/06/2026 ore 17:00"). 
+        - CRITICO: Se l'utente menziona una data o un orario per questa azione (es. "il 25 Giugno alle 17"), formattali esplicitamente all'interno della stringa stessa del next_step usando la struttura: "[Azione] ([DD/MM/YYYY] ore [HH:MM])" (es. "consegna preventivo al cliente (25/06/2026 ore 17:00)"). 
         - Mantieni come anno di riferimento il 2026 se l'anno corrente o futuro è implicito.
         - Se non viene menzionata nessuna azione futura, scrivi null.
         
@@ -289,6 +285,10 @@ if utente_connesso:
           * "sera" o "tardo pomeriggio" -> "18:00"
           * Se dice un orario specifico (es. "alle 11", "alle 14:30"), usa esattamente quell'orario ("11:00", "14:30").
         - CRITICO: Se l'utente specifica una data per il promemoria ma NON dice nessun orario o momento della giornata, assegna il valore predefinito "09:00". Se non c'è nemmeno il promemoria, scrivi null.
+
+        REGOLE PER IL CAMPO "nota_collega":
+        - Se nel testo l'utente dice qualcosa destinato a un collega (es: "scrivi al collega che...", "lascia una nota per il mio collega", "comunica a X che..."), estrai questa informazione e usala per creare un'email formale per il collega.
+        - Se non viene rilevato alcun messaggio esplicito per un collega, scrivi null.
 
         Se un dato manca, usa null.
         Aggiungi il campo 'mancanti' con la lista dei campi null.
