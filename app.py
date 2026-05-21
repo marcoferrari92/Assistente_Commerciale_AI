@@ -391,7 +391,7 @@ if utente_connesso:
         st.title("Imprendo Morpheus")
         
     with col_pulsante:
-        if st.button("🔴 Matrix", use_container_width=True):
+        if st.button("🔴", use_container_width=True):
             mostra_popup_matrix()
 
     st.divider()
