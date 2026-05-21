@@ -385,7 +385,7 @@ if utente_connesso:
             st.rerun()
 
     # Layout a due colonne per affiancare il Titolo e il Pulsante
-    col_titolo, col_pulsante = st.columns([0.8, 0.2], vertical_alignment="bottom")
+    col_titolo, col_pulsante = st.columns((4, 1), gap="small", vertical_alignment="center")
     
     with col_titolo:
         st.title("Imprendo Morpheus")
