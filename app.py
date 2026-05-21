@@ -199,9 +199,13 @@ def login_commerciale():
         if "commerciali" in st.secrets and username in st.secrets["commerciali"]:
             db_user = st.secrets["commerciali"][username]
             if password == db_user["password"]:
-                # Recuperiamo anche il campo 'nome' reale dal secret commerciale per usarlo come firma
+                # CORREZIONE ROBUSTA: se nei secrets manca del tutto il campo "nome", usiamo lo username formattato
                 real_name = db_user.get("nome", username.capitalize())
-                st.session_state.user_data = {"username": username, "email": db_user["email"], "nome": real_name}
+                st.session_state.user_data = {
+                    "username": username, 
+                    "email": db_user["email"], 
+                    "nome": real_name
+                }
                 st.rerun()
             else:
                 st.error("❌ Password errata.")
@@ -213,7 +217,10 @@ utente_connesso = login_commerciale()
 
 # --- 5. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
 if utente_connesso:
-    st.sidebar.write(f"👤 Utente: **{utente_connesso['nome']}**")
+    # CORREZIONE AGGIUNTIVA: Fallback di sicurezza anche in fase di rendering sidebar
+    nome_visualizzato = utente_connesso.get("nome", utente_connesso.get("username", "Utente").capitalize())
+    st.sidebar.write(f"👤 Utente: **{nome_visualizzato}**")
+    
     if st.sidebar.button("🚪 Logout"):
         st.session_state.user_data = None
         st.rerun()
@@ -251,7 +258,7 @@ if utente_connesso:
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
-        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato.
+        I campi sono: cliente, tipologia, object, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato.
 
         REGOLE PER I CAMPI "id_collega_selezionato":
         - Se l'utente esprime la volontà di contattare, notificare o lasciare una nota a un collega, identifica chi sia incrociando nome e ufficio.
@@ -502,7 +509,7 @@ if utente_connesso:
     with tab_condividi:
         st.write("")
         st.write("### Condividi questo evento via Email")
-        st.caption("Invia un riepilogo dettagliato di questo evento direttamente alla casella postale di un tuo collega.")
+        st.write("Invia un riepilogo dettagliato di questo evento direttamente alla casella postale di un tuo collega.")
         
         st.session_state.email_collega = st.text_input(
             "Email del collega", 
@@ -518,7 +525,7 @@ if utente_connesso:
         )
         
         st.session_state.invia_email_attivo = st.toggle(
-            "✉️ Invia l'email automaticamente quando primi 'SALVA EVENTO'", 
+            "✉️ Invia l'email automaticamente quando premi 'SALVA EVENTO'", 
             value=st.session_state.invia_email_attivo
         )
 
@@ -584,7 +591,7 @@ if utente_connesso:
             with st.spinner("Invio della mail al collega in corso..."):
                 invia_email_collega(
                     user_email=utente_connesso["email"],
-                    user_real_name=utente_connesso["nome"], # Passaggio del nome reale preso dai Secret
+                    user_real_name=utente_connesso["nome"], 
                     email_collega=st.session_state.email_collega,
                     dati_evento=st.session_state.form_data,
                     messaggio_personalizzato=st.session_state.messaggio_email_personalizzato
