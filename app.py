@@ -262,7 +262,8 @@ if utente_connesso:
         I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato, oggetto_email.
 
         REGOLE PER IL CAMPO "cliente"
-        - Inserisci il nome del cliente
+        - Inserisci il nome del cliente. 
+        - Il cliente è diverso dal campo "contatto". Se, ad esempio, dico: "Sono stato da Imprendo e ho parlato con Raffaella", il cliente è "Imprendo". 
         
         REGOLE PER IL CAMPO "contatto"
         - Inserisce nome e cognome e tra parentesi l'ufficio o l'area aziendale del contatto.
