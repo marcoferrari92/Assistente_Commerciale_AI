@@ -489,7 +489,7 @@ if utente_connesso:
         st.write("### Azioni Future & Scadenze")
         
         st.session_state.form_data["next_step"] = st.text_input(
-            "Prossimo Step (Cosa fare dopo)", 
+            "Prossimo Step (Data e Ora)", 
             value=st.session_state.form_data["next_step"],
             placeholder="Es. Inviare quotazione economica"
         )
@@ -516,7 +516,7 @@ if utente_connesso:
                 if current_time_val is None:
                     current_time_val = time(9, 0)
                     
-                chosen_time = st.time_input("Orario Specifico", value=current_time_val)
+                chosen_time = st.time_input("Orario Promemoria", value=current_time_val)
                 st.session_state.form_data["orario_promemoria"] = chosen_time
 
     # --- TAB 2: ALLEGATI ---
@@ -569,7 +569,7 @@ if utente_connesso:
         )
         
         st.session_state.invia_email_attivo = st.toggle(
-            "✉️ Invia l'email automaticamente quando primi 'SALVA EVENTO'", 
+            "✉️ Invia email automaticamente quando primi 'SALVA EVENTO'", 
             value=st.session_state.invia_email_attivo
         )
         st.write("")
