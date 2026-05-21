@@ -539,6 +539,8 @@ if utente_connesso:
                     "dimensione": file.size
                 })
             st.success(f"📎 {len(uploaded_files)} file pronti per essere salvati con questo evento.")
+        st.write("")
+        st.write("")
 
     # --- TAB 3: CONDIVISIONE EMAIL ---
     with tab_condividi:
@@ -570,6 +572,8 @@ if utente_connesso:
             "✉️ Invia l'email automaticamente quando primi 'SALVA EVENTO'", 
             value=st.session_state.invia_email_attivo
         )
+        st.write("")
+        st.write("")
 
     # --- 6. RIASSUNTO VOCALE DI CONFERMA ---
     if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
