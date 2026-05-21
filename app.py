@@ -386,14 +386,14 @@ if utente_connesso:
 
     # Layout a due colonne per affiancare il Titolo e il Pulsante
     col_titolo, col_pulsante = st.columns((4, 1), gap="small", vertical_alignment="center")
-    
-    with col_titolo:
-        st.title("Imprendo Morpheus")
-        
+
     with col_pulsante:
         if st.button("🔴", use_container_width=True):
             mostra_popup_matrix()
-
+            
+    with col_titolo:
+        st.title("Imprendo Morpheus")
+        
     st.divider()
     st.write("### Assistente Vocale")
     st.write("")
