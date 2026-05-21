@@ -44,6 +44,24 @@ if "invia_email_attivo" not in st.session_state:
     st.session_state.invia_email_attivo = False
 
 
+# --- 2.5 COLORAZIONE DINAMICA DELLO SFONDO (CSS INJECTION) ---
+# Determina il colore di sfondo in base alle Vibes (tonalità pastello molto tenui)
+bg_color = "rgba(0, 0, 0, 0)"  # Sfondo standard trasparente/predefinito
+if st.session_state.form_data["vibes"] == "Positivo 👍":
+    bg_color = "rgba(46, 204, 113, 0.05)"  # Verde pastello delicatissimo
+elif st.session_state.form_data["vibes"] == "Negativo 👎":
+    bg_color = "rgba(231, 76, 60, 0.05)"   # Rosso pastello delicatissimo
+
+st.markdown(f"""
+    <style>
+    .stApp {{
+        background-color: {bg_color};
+        transition: background-color 0.6s ease-in-out;
+    }}
+    </style>
+""", unsafe_allow_html=True)
+
+
 # --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
 def crea_evento_su_exchange(user_email, dati_evento):
     from O365 import Account
@@ -549,7 +567,7 @@ if utente_connesso:
         )
         
         st.session_state.invia_email_attivo = st.toggle(
-            "✉️ Invia l'email automaticamente quando premi 'SALVA EVENTO'", 
+            "✉️ Invia l'email automaticamente quando primi 'SALVA EVENTO'", 
             value=st.session_state.invia_email_attivo
         )
 
