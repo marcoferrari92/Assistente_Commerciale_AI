@@ -149,9 +149,7 @@ def invia_email_collega(user_email, email_collega, dati_evento, messaggio_person
         # --- AGGIUNTA DEGLI ALLEGATI REALI ---
         if file_caricati:
             for file in file_caricati:
-                # Leggiamo il contenuto binario del file caricato in Streamlit
                 file_bytes = file.getvalue()
-                # Aggiungiamo l'allegato passandogli i byte in memoria e il nome corretto
                 message.attachments.add([(file.name, file_bytes)])
         
         message.send()
@@ -240,7 +238,11 @@ if utente_connesso:
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
-        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria.
+        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega.
+
+        REGOLE PER IL CAMPO "nota_collega":
+        - Se nel testo l'utente dice qualcosa destinato a un collega (es: "scrivi al collega che...", "lascia una nota per il mio collega", "comunica a X che..."), estrai questa informazione e inseriscila qui.
+        - Se non viene rilevato alcun messaggio esplicito per un collega, scrivi null.
 
         REGOLE PER IL CAMPO "contatto"
         - Inserisce nome e cognome se noti e tra parentesi l'ufficio o l'area aziendale del contatto.
@@ -322,6 +324,11 @@ if utente_connesso:
                 if res:
                     st.session_state.campi_mancanti = res.get("mancanti", [])
                     
+                    # Gestione nota dettata per il collega
+                    if "nota_collega" in res and res["nota_collega"]:
+                        st.session_state.messaggio_email_personalizzato = res["nota_collega"]
+                        st.session_state.invia_email_attivo = True
+                    
                     for k in st.session_state.form_data.keys():
                         if k in res:
                             if res[k] is None:
@@ -358,7 +365,7 @@ if utente_connesso:
         nomi_puliti = [
             c.replace("_", " ").capitalize() 
             for c in st.session_state.campi_mancanti 
-            if c.lower().strip() != "mancanti" and c != "orario_promemoria"
+            if c.lower().strip() != "mancanti" and c != "orario_promemoria" and c != "nota_collega"
         ]
         if nomi_puliti:
             st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
@@ -489,6 +496,7 @@ if utente_connesso:
         orario_str = d['orario_promemoria'].strftime('%H:%M') if d['orario_promemoria'] else '09:00'
         
         with st.spinner("Morpheus sta preparando il riepilogo vocale..."):
+            # AGGIUNTA DEL MESSAGGIO EMAIL DI CONDIVISIONE ANCHE NEL CONTESTO DEL RIEPILOGO VOCALE
             prompt_riepilogo = f"""
             Sei Morpheus, l'assistente virtuale del commerciale. 
             Genera un breve discorso di conferma (massimo 3-4 frasi) in modo naturale, fluido e colloquiale ma professionale.
@@ -502,6 +510,7 @@ if utente_connesso:
             - Prossimo Step: {d['next_step'] if d['next_step'] else 'nessuno'}
             - Data Promemoria: {promemoria_str}
             - Orario Rilevato per Calendario: {orario_str}
+            - Nota rilevata da inviare al collega: {st.session_state.messaggio_email_personalizzato if st.session_state.messaggio_email_personalizzato else 'nessuna'}
             
             REGOLE DI TONO E STRUTTURA:
             - Non fare un elenco della spesa. Il discorso deve essere fluido e continuo.
@@ -509,6 +518,7 @@ if utente_connesso:
             - Se l'esito è "Positivo 👍", usa un tono soddisfatto. Se è "Negativo 👎", usa un tono pragmatico.
             - Riassumi brevemente il fulcro delle note.
             - COMUNICA L'ORARIO: Nel riassunto, specifica l'orario esatto che hai assegnato per il calendario (es. "...e ho impostato il promemoria per il {promemoria_str} alle ore {orario_str}"). Rendi la frase naturale.
+            - SE C'È UNA NOTA PER IL COLLEGA: Includi nel discorso che hai rilevato e salvato anche il messaggio specifico da inviare via mail al collega (es. "...e ho preparato la nota per il tuo collega").
             - Chiudi dicendo che se è tutto corretto si può procedere con il salvataggio.
             - Non usare elenchi puntati, numeri o asterischi, scrivi solo testo liscio da leggere direttamente.
             """
