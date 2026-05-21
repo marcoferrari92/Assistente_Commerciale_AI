@@ -569,7 +569,7 @@ if utente_connesso:
         )
         
         st.session_state.invia_email_attivo = st.toggle(
-            "✉️ Invia email automaticamente quando primi 'SALVA EVENTO'", 
+            "✉️ Invia email automaticamente quando premi 'SALVA EVENTO'", 
             value=st.session_state.invia_email_attivo
         )
         st.write("")
