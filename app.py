@@ -210,6 +210,9 @@ if utente_connesso:
         st.session_state.user_data = None
         st.rerun()
 
+    # Caricamento dinamico dei colleghi dai Secrets
+    lista_colleghi_secrets = st.secrets.get("colleghi", [])
+
     # --- INIZIALIZZAZIONE CLIENT OPENAI ---
     if "openai_key" in st.secrets:
         client = OpenAI(api_key=st.secrets["openai_key"])
@@ -235,10 +238,21 @@ if utente_connesso:
         
         current_date_str = datetime.now().strftime("%Y-%m-%d")
         
+        # Prepariamo la lista dei colleghi con ufficio per istruire il contesto dell'AI
+        contesto_colleghi = ""
+        for c in lista_colleghi_secrets:
+            contesto_colleghi += f"- {c.get('nome')} (Ufficio: {c.get('ufficio')})\n"
+        
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
-        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega.
+        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega, nome_collega, ufficio_collega.
+
+        REGOLE PER I CAMPI "nome_collega" E "ufficio_collega":
+        - Se l'utente esprime la volontà di contattare, notificare o lasciare un messaggio a un collega, identifica chi sia.
+        - In 'nome_collega', inserisci il nome proprio in lettere minuscole.
+        - In 'ufficio_collega', identifica l'ufficio o il reparto menzionato (es. "tecnico", "commerciale", "amministrazione"). Se non viene detto l'ufficio esplicito, prova a dedurlo dal contesto del messaggio (es. se parla di un bug o di un preventivo tecnico, probabilmente è l'ufficio tecnico). Se non è deducibile, scrivi null.
+        - Usa come riferimento questa lista di colleghi aziendali se utile:\n{contesto_colleghi}
 
         REGOLE PER IL CAMPO "contatto"
         - Inserisce nome e cognome se noti e tra parentesi l'ufficio o l'area aziendale del contatto.
@@ -266,7 +280,7 @@ if utente_connesso:
         - Inserisci le impressioni del commerciale sull'oggetto dell'evento.
         - Inserisci tutte le note tecniche in modo esaustivo.
         
-        REGOLE PER IL CAMPO 'next_step' (MODIFICATO):
+        REGOLE PER IL CAMPO 'next_step':
         - Identifica l'azione futura concordata o pianificata.
         - CRITICO: Se l'utente menziona una data o un orario per questa azione (es. "il 25 Giugno alle 17"), formattali esplicitamente all'interno della stringa stessa del next_step usando la struttura: "[Azione] ([DD/MM/YYYY] ore [HH:MM])" (es. "consegna preventivo al cliente (25/06/2026 ore 17:00)"). 
         - Mantieni come anno di riferimento il 2026 se l'anno corrente o futuro è implicito.
@@ -331,6 +345,34 @@ if utente_connesso:
                         st.session_state.messaggio_email_personalizzato = res["nota_collega"]
                         st.session_state.invia_email_attivo = True
                     
+                    # INCROCIO NOME + UFFICIO DAI SECRETS PER ENTRARE LA MAIL ESATTA
+                    if "nome_collega" in res and res["nome_collega"]:
+                        target_nome = res["nome_collega"].lower().strip()
+                        target_ufficio = res.get("ufficio_collega", "")
+                        if target_ufficio:
+                            target_ufficio = target_ufficio.lower().strip()
+                        
+                        email_trovata = None
+                        candidati_solo_nome = []
+                        
+                        for col in lista_colleghi_secrets:
+                            c_nome = col.get("nome", "").lower().strip()
+                            c_ufficio = col.get("ufficio", "").lower().strip()
+                            
+                            if c_nome == target_nome:
+                                # Se abbiamo nome e ufficio corrispondenti, è un match perfetto
+                                if target_ufficio and c_ufficio == target_ufficio:
+                                    email_trovata = col.get("email")
+                                    break
+                                candidati_solo_nome.append(col)
+                        
+                        # Se non c'era l'ufficio o non ha fatto match perfetto, usa il primo per nome
+                        if not email_trovata and candidati_solo_nome:
+                            email_trovata = candidati_solo_nome[0].get("email")
+                            
+                        if email_trovata:
+                            st.session_state.email_collega = email_trovata
+                    
                     for k in st.session_state.form_data.keys():
                         if k in res:
                             if res[k] is None:
@@ -367,7 +409,7 @@ if utente_connesso:
         nomi_puliti = [
             c.replace("_", " ").capitalize() 
             for c in st.session_state.campi_mancanti 
-            if c.lower().strip() != "mancanti" and c != "orario_promemoria" and c != "nota_collega"
+            if c.lower().strip() != "mancanti" and c != "orario_promemoria" and c != "nota_collega" and c != "nome_collega" and c != "ufficio_collega"
         ]
         if nomi_puliti:
             st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
@@ -487,7 +529,7 @@ if utente_connesso:
         )
         
         st.session_state.invia_email_attivo = st.toggle(
-            "✉️ Invia l'email automaticamente quando primi 'SALVA EVENTO'", 
+            "✉️ Invia l'email automaticamente quando premi 'SALVA EVENTO'", 
             value=st.session_state.invia_email_attivo
         )
 
