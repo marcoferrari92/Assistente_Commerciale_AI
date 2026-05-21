@@ -261,49 +261,39 @@ if utente_connesso:
         Analizza il suo rapporto e restituisci un JSON.
         I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato, oggetto_email.
 
-        REGOLE PER IL CAMPO "oggetto_email":
-        - Se viene rilevata una nota, una comunicazione o un messaggio per un collega, scrivi un oggetto e-mail formale, chiaro e professionale riassumendo il contenuto.
-        - Deve obbligatoriamente includere il nome del cliente (es. "📋 Supporto Amministrativo - [Nome Cliente]" oppure "🔧 Segnalazione Tecnica - [Nome Cliente]").
-        - Se non c'è nessuna nota per un collega, scrivi null.
-
-        REGOLE PER I CAMPI "id_collega_selezionato":
-        - Se l'utente esprime la volontà di contattare, notificare o lasciare una nota a un collega, identifica chi sia incrociando nome e ufficio.
-        - Confronta la richiesta con questo elenco ufficiale di colleghi aziendali:
-        {contesto_colleghi}
-        - Identifica quale ID corrisponde al collega corretto (es: se l'utente dice "Davide dell'ufficio tecnico", assegna l'ID associato a Davide De Meo).
-        - Se non trovi un match o non viene menzionato alcun collega, scrivi null.
-        - Restituisci SOLO il valore numerico dell'ID (es: 0, 1, 2) o null. Non scrivere stringhe di testo qui.
-
+        REGOLE PER IL CAMPO "cliente"
+        - Inserisci il nome del cliente
+        
         REGOLE PER IL CAMPO "contatto"
-        - Inserisce nome e cognome se noti e tra parentesi l'ufficio o l'area aziendale del contatto.
+        - Inserisce nome e cognome e tra parentesi l'ufficio o l'area aziendale del contatto.
 
         REGOLE CRITICHE PER IL CAMPO 'tipologia':
         - Indica la tipologia dell'evento.
         - Deve essere SOLO uno di questi tre valori: "telefonata", "email", "visita".
-        - Se l'utente dice "ho chiamato" o "ci siamo sentiti", usa "telefonata".
+        - Se l'utente dice "ho chiamato", "ho fatto una videocall" o "ci siamo sentiti", usa "telefonata".
         - Se l'utente dice "ho scritto" o "mi ha risposto alla mail", usa "email".
-        - Se l'utente dice "sono andato da loro" o "abbiamo pranzato insieme", usa "visita".
+        - Se l'utente dice "sono andato", "sono stato" o "abbiamo pranzato insieme" usa "visita".
         - CRITICO: Se non è chiaro, scrivi null.
 
-        REGOLE PER IL CAMPO 'oggetto' (Interno CRM):
-        - Inserisci solo il motivo che ha generato l'evento per uso interno del CRM. 
+        REGOLE PER IL CAMPO 'oggetto':
+        - Inserisci solo il motivo che ha generato l'evento. 
         - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 10 parole.
         - CRITICO: Se non dice nulla di utile per l'oggetto, scrivi null.
 
         REGOLE PER IL CAMPO 'vibes':
-        - Analizza il tono di voce e le parole del commerciale per capire l'esito dell'incontro o della telefonata.
-        - Se l'incontro è andato bene, c'è interesse, o l'accordo è positivo, scrivi ESATTAMENTE "Positivo 👍".
+        - Analizza il tono di voce e le parole del commerciale per capire l'esito dell'evento.
+        - Se l'evento è andato bene, c'è interesse, o l'accordo è positivo, scrivi ESATTAMENTE "Positivo 👍".
         - Se ci sono stati problemi, lamentele, esito negativo o chiusura, scrivi ESATTAMENTE "Negativo 👎".
         - CRITICO: Se l'utente non esprime un'opinione chiara, se il tono è neutro o se non riesci a capire l'esito dal racconto, scrivi null. Non inventare o ipotizzare.
 
         REGOLE PER LE NOTE:
-        - Inserisci le impressioni del commerciale sull'oggetto dell'evento.
-        - Inserisci tutte le note tecniche in modo esaustivo.
+        - Riassumi l'evento in modo tecnico, preciso ed esaustivo con almeno 20 parole.
+        - Inserisci anche le impressioni del commerciale sull'evento.
         
         REGOLE PER IL CAMPO 'next_step':
         - Identifica l'azione futura concordata o pianificata.
         - CRITICO: Se l'utente menziona una data o un orario per questa azione (es. "il 25 Giugno alle 17"), formattali esplicitamente all'interno della stringa stessa del next_step usando la struttura: "[Azione] ([DD/MM/YYYY] ore [HH:MM])" (es. "consegna preventivo al cliente (25/06/2026 ore 17:00)"). 
-        - Mantieni come anno di riferimento il 2026 se l'anno corrente o futuro è implicito.
+        - Mantieni come anno di riferimento il 2026 se l'anno è implicito.
         - Se non viene menzionata nessuna azione futura, scrivi null.
         
         REGOLE PER IL CAMPO 'promemoria':
@@ -323,6 +313,19 @@ if utente_connesso:
         REGOLE PER IL CAMPO "nota_collega":
         - Se nel testo l'utente dice qualcosa destinato a un collega (es: "scrivi al collega che...", "lascia una nota per il mio collega", "comunica a X che..."), estrai questa informazione e usala per creare un'email formale per il collega.
         - Se non viene rilevato alcun messaggio esplicito per un collega, scrivi null.
+
+        REGOLE PER IL CAMPO "oggetto_email":
+        - Se viene rilevata una nota, una comunicazione o un messaggio per un collega, scrivi un oggetto e-mail formale, chiaro e professionale riassumendo il contenuto.
+        - Deve obbligatoriamente includere il nome del cliente (es. "Supporto Amministrativo - [Nome Cliente]" oppure "Segnalazione Tecnica - [Nome Cliente]").
+        - Se non c'è nessuna nota per un collega, scrivi null.
+
+        REGOLE PER I CAMPI "id_collega_selezionato":
+        - Se l'utente esprime la volontà di contattare, notificare o lasciare una nota a un collega, identifica chi sia incrociando nome e ufficio.
+        - Confronta la richiesta con questo elenco ufficiale di colleghi aziendali:
+        {contesto_colleghi}
+        - Identifica quale ID corrisponde al collega corretto (es: se l'utente dice "Davide dell'ufficio tecnico", assegna l'ID associato a Davide De Meo).
+        - Se non trovi un match o non viene menzionato alcun collega, scrivi null.
+        - Restituisci SOLO il valore numerico dell'ID (es: 0, 1, 2) o null. Non scrivere stringhe di testo qui.
 
         Se un dato manca, usa null.
         Aggiungi il campo 'mancanti' con la lista dei campi null.
