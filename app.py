@@ -48,9 +48,9 @@ if "invia_email_attivo" not in st.session_state:
 # Determina il colore di sfondo in base alle Vibes (tonalità pastello molto tenui)
 bg_color = "rgba(0, 0, 0, 0)"  # Sfondo standard trasparente/predefinito
 if st.session_state.form_data["vibes"] == "Positivo 👍":
-    bg_color = "rgba(46, 204, 113, 0.05)"  # Verde pastello delicatissimo
+    bg_color = "rgba(46, 204, 113, 0.25)"  # Verde pastello delicatissimo
 elif st.session_state.form_data["vibes"] == "Negativo 👎":
-    bg_color = "rgba(231, 76, 60, 0.05)"   # Rosso pastello delicatissimo
+    bg_color = "rgba(231, 76, 60, 0.25)"   # Rosso pastello delicatissimo
 
 st.markdown(f"""
     <style>
@@ -308,7 +308,7 @@ if utente_connesso:
         - CRITICO: Se l'utente non esprime un'opinione chiara, se il tono è neutro o se non riesci a capire l'esito dal racconto, scrivi null. Non inventare o ipotizzare.
 
         REGOLE PER IL CAMPO "esito"
-        - Estrai l'esito finale o lo stato della trattativa emerso dall'evento (es. "preventivo approvato", "non interessati a procedere", "da ricontattare per prezzo", "trattativa avviata").
+        - Estrai l'esito finale o lo stato della trattativa emerso dall'evento (es. "preventivo approvato", "interessati", "non interessati a procedere", "da ricontattare per prezzo", "trattativa avviata").
         - Se non è specificato un esito chiaro, scrivi null.
 
         REGOLE PER LE NOTE:
