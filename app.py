@@ -16,6 +16,7 @@ if 'form_data' not in st.session_state:
         "oggetto": "",
         "contatto": "",
         "vibes": None,  
+        "esito": "",  # Nuovo campo per memorizzare l'esito specifico dell'evento
         "note": "",
         "next_step": "",        
         "promemoria": None,
@@ -88,7 +89,7 @@ def crea_evento_su_exchange(user_email, dati_evento):
         
         new_event = calendar.new_event()
         new_event.subject = f"🔔 {dati_evento['cliente']} - {dati_evento['oggetto']}"
-        new_event.body = f"Contatto: {dati_evento['contatto']}\nProssimo Step: {dati_evento['next_step']}\n\nNote:\n{dati_evento['note']}"
+        new_event.body = f"Contatto: {dati_evento['contatto']}\nEsito: {dati_evento['esito']}\nProssimo Step: {dati_evento['next_step']}\n\nNote:\n{dati_evento['note']}"
         new_event.start = start_datetime
         new_event.end = end_datetime
         
@@ -143,7 +144,8 @@ def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email
         corpo_email += f"📞 Tipologia: {dati_evento['tipologia'].capitalize()}\n"
         corpo_email += f"🎯 Oggetto Evento: {dati_evento['oggetto']}\n"
         corpo_email += f"👤 Contatto: {dati_evento['contatto']}\n"
-        corpo_email += f"🎭 Vibes: {dati_evento['vibes']}\n\n"
+        corpo_email += f"🎭 Vibes: {dati_evento['vibes']}\n"
+        corpo_email += f"📊 Esito Concreto: {dati_evento['esito']}\n\n"
         corpo_email += f"📝 Note:\n{dati_evento['note']}\n\n"
         corpo_email += f"🚀 Prossimo Step: {dati_evento['next_step']}\n"
         corpo_email += f"🔔 Promemoria Calendario: {promemoria_str} alle ore {orario_str}\n\n"
@@ -259,7 +261,7 @@ if utente_connesso:
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
-        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato, oggetto_email.
+        I campi sono: cliente, tipologia, oggetto, contatto, vibes, esito, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato, oggetto_email.
 
         REGOLE PER IL CAMPO "cliente"
         - Inserisci il nome del cliente. 
@@ -283,9 +285,13 @@ if utente_connesso:
 
         REGOLE PER IL CAMPO 'vibes':
         - Analizza il tono di voce e le parole del commerciale per capire l'esito dell'evento.
-        - Se l'evento è andato bene, c'è interesse, o l'accordo è positivo, scrivi ESATTAMENTE "Positivo 👍".
+        - Se l'evento è gone bene, c'è interesse, o l'accordo è positivo, scrivi ESATTAMENTE "Positivo 👍".
         - Se ci sono stati problemi, lamentele, esito negativo o chiusura, scrivi ESATTAMENTE "Negativo 👎".
         - CRITICO: Se l'utente non esprime un'opinione chiara, se il tono è neutro o se non riesci a capire l'esito dal racconto, scrivi null. Non inventare o ipotizzare.
+
+        REGOLE PER IL CAMPO "esito"
+        - Estrai l'esito finale o lo stato della trattativa emerso dall'evento (es. "preventivo approvato", "non interessati a procedere", "da ricontattare per prezzo", "trattativa avviata").
+        - Se non è specificato un esito chiaro, scrivi null.
 
         REGOLE PER LE NOTE:
         - Riassumi l'evento in modo tecnico, preciso ed esaustivo con almeno 20 parole.
@@ -420,7 +426,7 @@ if utente_connesso:
         nomi_puliti = [
             c.replace("_", " ").capitalize() 
             for c in st.session_state.campi_mancanti 
-            if c.lower().strip() != "mancanti" and c != "orario_promemoria" and c != "nota_collega" and c != "id_collega_selezionato" and c != "oggetto_email"
+            if c.lower().strip() != "mancanti" and c != "orario_promemoria" and c != "nota_collega" and c != "id_collega_selezionato" and c != "oggetto_email" and c != "esito"
         ]
         if nomi_puliti:
             st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
@@ -436,33 +442,29 @@ if utente_connesso:
         col_r1_1, col_r1_2 = st.columns(2)
         with col_r1_1:
             st.session_state.form_data["cliente"] = st.text_input("Cliente", value=st.session_state.form_data["cliente"])
-        with col_r1_2:
-            t_options = ["telefonata", "email", "visita"]
-            t_val = st.session_state.form_data["tipologia"]
-            t_idx = t_options.index(t_val) if t_val in t_options else 0
-            st.session_state.form_data["tipologia"] = st.selectbox("Tipologia", t_options, index=t_idx)
-
-        col_r2_1, col_r2_2 = st.columns(2)
-        with col_r2_1:
-            st.write("**Esito (Vibes):**")
-            v_val = st.session_state.form_data["vibes"]
-            if v_val == "Positivo 👍":
-                v_idx = 0
-            elif v_val == "Negativo 👎":
-                v_idx = 1
-            else:
-                v_idx = None
+            st.session_state.form_data["tipologia"] = st.selectbox("Tipologia", ["telefonata", "email", "visita"], index=["telefonata", "email", "visita"].index(st.session_state.form_data["tipologia"]) if st.session_state.form_data["tipologia"] in ["telefonata", "email", "visita"] else 0)
+            st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
+            st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
             
+            # Sezione Vibes
+            st.write("**Vibes (Esito generico):**")
+            v_val = st.session_state.form_data["vibes"]
+            v_idx = 0 if v_val == "Positivo 👍" else (1 if v_val == "Negativo 👎" else None)
             v_scelta = st.radio(
                 "Esito evento", ["Positivo 👍", "Negativo 👎"], 
                 index=v_idx, horizontal=True, label_visibility="collapsed"
             )
             st.session_state.form_data["vibes"] = v_scelta
-        with col_r2_2:
-            st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
+            
+            # Nuovo campo Esito posizionato esattamente sotto a Vibes nella prima colonna
+            st.session_state.form_data["esito"] = st.text_input(
+                "Esito Concreto Trattativa", 
+                value=st.session_state.form_data["esito"],
+                placeholder="Es. preventivo approvato, non interessati, ecc."
+            )
 
-        st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
-        st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=150)
+        with col_r1_2:
+            st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=315)
 
         st.write("")
         st.write("")
@@ -532,7 +534,7 @@ if utente_connesso:
             placeholder="esempio@azienda.com"
         )
         
-        # NUOVO BOX DI INPUT AUTOPRECOMPILATO PER L'OGGETTO EMAIL
+        # BOX DI INPUT AUTOPRECOMPILATO PER L'OGGETTO EMAIL
         st.session_state.oggetto_email = st.text_input(
             "Oggetto dell'E-mail",
             value=st.session_state.oggetto_email,
@@ -567,6 +569,7 @@ if utente_connesso:
             - Contatto dell'azienda (con eventuale ruolo/ufficio): {d['contatto'] if d['contatto'] else 'non specificato'}
             - Oggetto: {d['oggetto'] if d['oggetto'] else 'non specificato'}
             - Esito dell'incontro (Vibes): {d['vibes'] if d['vibes'] else 'non specificato'}
+            - Esito Concreto: {d['esito'] if d['esito'] else 'non specificato'}
             - Note e dettagli rilevanti: {d['note']}
             - Prossimo Step: {d['next_step'] if d['next_step'] else 'nessuno'}
             - Data Promemoria: {promemoria_str}
@@ -577,7 +580,7 @@ if utente_connesso:
             - Non fare un elenco della spesa. Il discorso deve essere fluido e continuo.
             - Specifica subito la tipologia di evento e con chi hai parlato.
             - Se l'esito è "Positivo 👍", usa un tono soddisfatto. Se è "Negativo 👎", usa un tono pragmatico.
-            - Riassumi brevemente il fulcro delle note.
+            - Riassumi brevemente il fulcro delle note e l'esito concreto della trattativa.
             - COMUNICA L'ORARIO: Nel riassunto, specifica l'orario esatto che hai assegnato per il calendario (es. "...e ho impostato il promemoria per il {promemoria_str} alle ore {orario_str}"). Rendi la frase naturale.
             - SE C'È UNA NOTA PER IL COLLEGA: Includi nel discorso che hai rilevato e salvato anche il messaggio specifico da inviare via mail al collega (es. "...e ho preparato la nota per il tuo collega").
             - Chiudi dicendo che se è tutto corretto si può procedere con il salvataggio.
@@ -615,7 +618,7 @@ if utente_connesso:
                     user_email=utente_connesso["email"],
                     user_real_name=utente_connesso["nome"], 
                     email_collega=st.session_state.email_collega,
-                    oggetto_email=st.session_state.oggetto_email, # Passaggio del nuovo oggetto email automatico
+                    oggetto_email=st.session_state.oggetto_email, 
                     dati_evento=st.session_state.form_data,
                     messaggio_personalizzato=st.session_state.messaggio_email_personalizzato
                 )
