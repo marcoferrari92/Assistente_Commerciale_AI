@@ -16,7 +16,7 @@ if 'form_data' not in st.session_state:
         "oggetto": "",
         "contatto": "",
         "vibes": None,  
-        "esito": "",  # Nuovo campo per memorizzare l'esito specifico dell'evento
+        "esito": "", 
         "note": "",
         "next_step": "",        
         "promemoria": None,
