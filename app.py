@@ -99,7 +99,7 @@ def crea_evento_su_exchange(user_email, dati_evento):
         return False
 
 
-def invia_email_collega(user_email, email_collega, dati_evento, messaggio_personalizzato="", file_caricati=None):
+def invia_email_collega(user_email, user_real_name, email_collega, dati_evento, messaggio_personalizzato="", file_caricati=None):
     from O365 import Account
     
     if "microsoft_exchange" not in st.secrets:
@@ -124,7 +124,10 @@ def invia_email_collega(user_email, email_collega, dati_evento, messaggio_person
         message = mailbox.new_message()
         
         message.to.add(email_collega)
-        message.subject = f"📋 Condivisione Evento CRM: {dati_evento['cliente']} - {dati_evento['oggetto']}"
+        
+        # OGGETTO EMAIL AGGIORNATO CON IL CAMPO OGGETTO REALE DEL CRM
+        oggetto_crm = dati_evento['oggetto'] if dati_evento['oggetto'] else 'Rapporto Attività'
+        message.subject = f"📋 {dati_evento['cliente']} - {oggetto_crm}"
         
         promemoria_str = dati_evento['promemoria'].strftime('%d/%m/%Y') if dati_evento['promemoria'] else 'Non impostato'
         orario_str = dati_evento['orario_promemoria'].strftime('%H:%M') if dati_evento['orario_promemoria'] else '09:00'
@@ -134,15 +137,18 @@ def invia_email_collega(user_email, email_collega, dati_evento, messaggio_person
             corpo_email += f"Nota del collega:\n\"{messaggio_personalizzato}\"\n\n"
             corpo_email += "-----------------------------------------\n\n"
             
-        corpo_email += f"Ecco i dettagli dell'evento registrato da {user_email}:\n\n"
+        corpo_email += f"Ecco i dettagli dell'evento registrato da {user_real_name}:\n\n"
         corpo_email += f"🏢 Cliente: {dati_evento['cliente']}\n"
         corpo_email += f"📞 Tipologia: {dati_evento['tipologia'].capitalize()}\n"
-        corpo_email += f"🎯 Oggetto: {dati_evento['oggetto']}\n"
+        corpo_email += f"🎯 Oggetto: {oggetto_crm}\n"
         corpo_email += f"👤 Contatto: {dati_evento['contatto']}\n"
         corpo_email += f"🎭 Vibes: {dati_evento['vibes']}\n\n"
         corpo_email += f"📝 Note:\n{dati_evento['note']}\n\n"
         corpo_email += f"🚀 Prossimo Step: {dati_evento['next_step']}\n"
-        corpo_email += f"🔔 Promemoria Calendario: {promemoria_str} alle ore {orario_str}\n"
+        corpo_email += f"🔔 Promemoria Calendario: {promemoria_str} alle ore {orario_str}\n\n"
+        
+        # AGGIUNTA DELLA FIRMA CON IL NOME REALE DAL SECRET UTENTE
+        corpo_email += f"Un saluto,\n{user_real_name}"
         
         message.body = corpo_email
 
@@ -193,7 +199,9 @@ def login_commerciale():
         if "commerciali" in st.secrets and username in st.secrets["commerciali"]:
             db_user = st.secrets["commerciali"][username]
             if password == db_user["password"]:
-                st.session_state.user_data = {"username": username, "email": db_user["email"]}
+                # Recuperiamo anche il campo 'nome' reale dal secret commerciale per usarlo come firma
+                real_name = db_user.get("nome", username.capitalize())
+                st.session_state.user_data = {"username": username, "email": db_user["email"], "nome": real_name}
                 st.rerun()
             else:
                 st.error("❌ Password errata.")
@@ -205,7 +213,7 @@ utente_connesso = login_commerciale()
 
 # --- 5. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
 if utente_connesso:
-    st.sidebar.write(f"👤 Utente: **{utente_connesso['username'].capitalize()}**")
+    st.sidebar.write(f"👤 Utente: **{utente_connesso['nome']}**")
     if st.sidebar.button("🚪 Logout"):
         st.session_state.user_data = None
         st.rerun()
@@ -235,7 +243,6 @@ if utente_connesso:
         
         current_date_str = datetime.now().strftime("%Y-%m-%d")
         
-        # Recupero sicuro della lista direttamente dai secrets ed esportazione indici per l'AI
         lista_colleghi_secrets = st.secrets.get("colleghi", [])
         contesto_colleghi = ""
         for index, c in enumerate(lista_colleghi_secrets):
@@ -246,8 +253,8 @@ if utente_connesso:
         Analizza il suo rapporto e restituisci un JSON.
         I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato.
 
-        REGOLE CRITICHE PER IL CAMPO "id_collega_selezionato":
-        - Se l'utente esprime la volontà di contattare, notificare o lasciare una nota a un collega, analizza attentamente a chi si riferisce incrociando il nome (o parte di esso) e l'ufficio dedotto o esplicito.
+        REGOLE PER I CAMPI "id_collega_selezionato":
+        - Se l'utente esprime la volontà di contattare, notificare o lasciare una nota a un collega, identifica chi sia incrociando nome e ufficio.
         - Confronta la richiesta con questo elenco ufficiale di colleghi aziendali:
         {contesto_colleghi}
         - Identifica quale ID corrisponde al collega corretto (es: se l'utente dice "Davide dell'ufficio tecnico", assegna l'ID associato a Davide De Meo).
@@ -577,6 +584,7 @@ if utente_connesso:
             with st.spinner("Invio della mail al collega in corso..."):
                 invia_email_collega(
                     user_email=utente_connesso["email"],
+                    user_real_name=utente_connesso["nome"], # Passaggio del nome reale preso dai Secret
                     email_collega=st.session_state.email_collega,
                     dati_evento=st.session_state.form_data,
                     messaggio_personalizzato=st.session_state.messaggio_email_personalizzato
