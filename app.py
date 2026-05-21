@@ -481,7 +481,7 @@ if utente_connesso:
             "Aggiungi un messaggio o una nota per il collega (Opzionale)",
             value=st.session_state.messaggio_email_personalizzato,
             placeholder="Es. Ciao, ti giro questo report perché il cliente ha chiesto informazioni sulla tua area...",
-            height=100
+            height=300
         )
         
         st.session_state.invia_email_attivo = st.toggle(
