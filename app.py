@@ -379,7 +379,7 @@ if utente_connesso:
         Devi capire che la maggior parte di loro non è pronta per essere scollegata. Tanti di loro sono così assuefatti, 
         così disperatamente dipendenti dal sistema, che combatterebbero per difenderlo."*
 
-        Usa le AI con coscienza.
+        Usa le AI con coscienza. La tua creatività è lo strumento più potente.
         """)
         if st.button("Chiudi", use_container_width=True):
             st.rerun()
