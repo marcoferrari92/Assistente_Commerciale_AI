@@ -549,22 +549,22 @@ if utente_connesso:
         st.caption("Inoltra l'evento a un collega per richiedere valutazione tecniche o informazioni commerciali.")
         
         st.session_state.email_collega = st.text_input(
-            "Email del collega", 
+            "Email", 
             value=st.session_state.email_collega,
             placeholder="esempio@azienda.com"
         )
         
         # BOX DI INPUT AUTOPRECOMPILATO PER L'OGGETTO EMAIL
         st.session_state.oggetto_email = st.text_input(
-            "Oggetto dell'E-mail",
+            "Oggetto Email",
             value=st.session_state.oggetto_email,
             placeholder="Es. Segnalazione attività commerciale"
         )
         
         st.session_state.messaggio_email_personalizzato = st.text_area(
-            "Aggiungi un messaggio o una nota per il collega (Opzionale)",
+            "Aggiungi un messaggio (Opzionale)",
             value=st.session_state.messaggio_email_personalizzato,
-            placeholder="Es. Ciao, ti giro questo report perché il cliente ha chiesto informazioni sulla tua area...",
+            placeholder="Es. Ciao, ti giro questo report perché il cliente ha chiesto informazioni sulla tua area di competenza...",
             height=300
         )
         
