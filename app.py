@@ -270,9 +270,11 @@ if utente_connesso:
         - Inserisci le impressioni del commerciale sull'oggetto dell'evento.
         - Inserisci tutte le note tecniche in modo esaustivo.
         
-        REGOLE PER IL CAMPO 'next_step':
-        - Identifica l'azione futura concordata o pianificata (es. "Inviare preventivo", "Richiamare per conferma", "Fissare demo").
-        - CRITICO: Se non viene menzionata nessuna azione futura, scrivi null.
+        REGOLE PER IL CAMPO 'next_step' (MODIFICATO):
+        - Identifica l'azione futura concordata o pianificata.
+        - CRITICO: Se l'utente menziona una data o un orario per questa azione (es. "il 25 Giugno alle 17"), formattali esplicitamente all'interno della stringa stessa del next_step usando la struttura: "[Azione] [DD/MM/YYYY] ore [HH:MM]" (es. "consegna preventivo al cliente 25/06/2026 ore 17:00"). 
+        - Mantieni come anno di riferimento il 2026 se l'anno corrente o futuro è implicito.
+        - Se non viene menzionata nessuna azione futura, scrivi null.
         
         REGOLE PER IL CAMPO 'promemoria':
         - Identifica la data in cui il commerciale desidera essere avvisato o in cui è previsto il next step.
@@ -485,7 +487,7 @@ if utente_connesso:
         )
         
         st.session_state.invia_email_attivo = st.toggle(
-            "✉️ Invia l'email automaticamente quando premi 'SALVA EVENTO'", 
+            "✉️ Invia l'email automaticamente quando primi 'SALVA EVENTO'", 
             value=st.session_state.invia_email_attivo
         )
 
@@ -496,7 +498,6 @@ if utente_connesso:
         orario_str = d['orario_promemoria'].strftime('%H:%M') if d['orario_promemoria'] else '09:00'
         
         with st.spinner("Morpheus sta preparando il riepilogo vocale..."):
-            # AGGIUNTA DEL MESSAGGIO EMAIL DI CONDIVISIONE ANCHE NEL CONTESTO DEL RIEPILOGO VOCALE
             prompt_riepilogo = f"""
             Sei Morpheus, l'assistente virtuale del commerciale. 
             Genera un breve discorso di conferma (massimo 3-4 frasi) in modo naturale, fluido e colloquiale ma professionale.
