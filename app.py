@@ -229,9 +229,9 @@ def login_commerciale():
                 }
                 st.rerun()
             else:
-                st.error("❌ Password errata.")
+                st.error("❌ Password errata! Oppure prova a clickare sul campo (a volte si bugga 🫠)")
         else:
-            st.error("❌ Utente non trovato.")
+            st.error("❌ Utente non trovato!")
     return None
 
 utente_connesso = login_commerciale()
