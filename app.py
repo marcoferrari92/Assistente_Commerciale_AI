@@ -495,7 +495,7 @@ if utente_connesso:
     with tab_condividi:
         st.write("")
         st.write("### Condividi questo evento via Email")
-        st.write("Invia un riepilogo dettagliato di questo evento direttamente alla casella postale di un tuo collega.")
+        st.caption("Invia un riepilogo dettagliato di questo evento direttamente alla casella postale di un tuo collega.")
         
         st.session_state.email_collega = st.text_input(
             "Email del collega", 
