@@ -312,7 +312,8 @@ if utente_connesso:
         - CRITICO: Se l'utente specifica una data per il promemoria ma NON dice nessun orario o momento della giornata, assegna il valore predefinito "09:00". Se non c'è nemmeno il promemoria, scrivi null.
 
         REGOLE PER IL CAMPO "nota_collega":
-        - Se nel testo l'utente dice qualcosa destinato a un collega (es: "scrivi al collega che...", "lascia una nota per il mio collega", "comunica a X che..."), estrai questa informazione e usala per creare un'email formale per il collega.
+        - Se nel testo l'utente dice qualcosa destinato a un collega (es: "scrivi al collega che...", "lascia una nota per il mio collega", "comunica a X che..."), estrai questa informazione e usala per creare un'email formale e gentile per il collega.
+        - Non firmare l'email.
         - Se non viene rilevato alcun messaggio esplicito per un collega, scrivi null.
 
         REGOLE PER IL CAMPO "oggetto_email":
