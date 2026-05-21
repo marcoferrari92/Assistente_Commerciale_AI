@@ -35,6 +35,8 @@ if 'mic_key_counter' not in st.session_state:
 # Inizializzazione stati per la nuova tab di condivisione email
 if "email_collega" not in st.session_state:
     st.session_state.email_collega = ""
+if "oggetto_email" not in st.session_state:
+    st.session_state.oggetto_email = ""
 if "messaggio_email_personalizzato" not in st.session_state:
     st.session_state.messaggio_email_personalizzato = ""
 if "invia_email_attivo" not in st.session_state:
@@ -99,7 +101,7 @@ def crea_evento_su_exchange(user_email, dati_evento):
         return False
 
 
-def invia_email_collega(user_email, user_real_name, email_collega, dati_evento, messaggio_personalizzato="", file_caricati=None):
+def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
     from O365 import Account
     
     if "microsoft_exchange" not in st.secrets:
@@ -125,9 +127,8 @@ def invia_email_collega(user_email, user_real_name, email_collega, dati_evento, 
         
         message.to.add(email_collega)
         
-        # OGGETTO EMAIL AGGIORNATO CON IL CAMPO OGGETTO REALE DEL CRM
-        oggetto_crm = dati_evento['oggetto'] if dati_evento['oggetto'] else 'Rapporto Attività'
-        message.subject = f"📋 {dati_evento['cliente']} - {oggetto_crm}"
+        # UTILIZZO DELL'OGGETTO EMAIL AUTOMATICO O DI BACKUP
+        message.subject = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
         
         promemoria_str = dati_evento['promemoria'].strftime('%d/%m/%Y') if dati_evento['promemoria'] else 'Non impostato'
         orario_str = dati_evento['orario_promemoria'].strftime('%H:%M') if dati_evento['orario_promemoria'] else '09:00'
@@ -140,7 +141,7 @@ def invia_email_collega(user_email, user_real_name, email_collega, dati_evento, 
         corpo_email += f"Ecco i dettagli dell'evento registrato da {user_real_name}:\n\n"
         corpo_email += f"🏢 Cliente: {dati_evento['cliente']}\n"
         corpo_email += f"📞 Tipologia: {dati_evento['tipologia'].capitalize()}\n"
-        corpo_email += f"🎯 Oggetto: {oggetto_crm}\n"
+        corpo_email += f"🎯 Oggetto Evento: {dati_evento['oggetto']}\n"
         corpo_email += f"👤 Contatto: {dati_evento['contatto']}\n"
         corpo_email += f"🎭 Vibes: {dati_evento['vibes']}\n\n"
         corpo_email += f"📝 Note:\n{dati_evento['note']}\n\n"
@@ -258,7 +259,12 @@ if utente_connesso:
         prompt = f"""
         Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
         Analizza il suo rapporto e restituisci un JSON.
-        I campi sono: cliente, tipologia, object, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato.
+        I campi sono: cliente, tipologia, oggetto, contatto, vibes, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato, oggetto_email.
+
+        REGOLE PER IL CAMPO "oggetto_email":
+        - Se viene rilevata una nota, una comunicazione o un messaggio per un collega, scrivi un oggetto e-mail formale, chiaro e professionale riassumendo il contenuto.
+        - Deve obbligatoriamente includere il nome del cliente (es. "📋 Supporto Amministrativo - [Nome Cliente]" oppure "🔧 Segnalazione Tecnica - [Nome Cliente]").
+        - Se non c'è nessuna nota per un collega, scrivi null.
 
         REGOLE PER I CAMPI "id_collega_selezionato":
         - Se l'utente esprime la volontà di contattare, notificare o lasciare una nota a un collega, identifica chi sia incrociando nome e ufficio.
@@ -279,8 +285,8 @@ if utente_connesso:
         - Se l'utente dice "sono andato da loro" o "abbiamo pranzato insieme", usa "visita".
         - CRITICO: Se non è chiaro, scrivi null.
 
-        REGOLE PER IL CAMPO 'oggetto':
-        - Inserisci solo il motivo che ha generato l'evento. 
+        REGOLE PER IL CAMPO 'oggetto' (Interno CRM):
+        - Inserisci solo il motivo che ha generato l'evento per uso interno del CRM. 
         - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 10 parole.
         - CRITICO: Se non dice nulla di utile per l'oggetto, scrivi null.
 
@@ -358,6 +364,10 @@ if utente_connesso:
                     if "nota_collega" in res and res["nota_collega"]:
                         st.session_state.messaggio_email_personalizzato = res["nota_collega"]
                         st.session_state.invia_email_attivo = True
+                        
+                    # POPOLAMENTO AUTOMATICO OGGETTO EMAIL
+                    if "oggetto_email" in res and res["oggetto_email"]:
+                        st.session_state.oggetto_email = res["oggetto_email"]
                     
                     # ASSEGNAZIONE EMAIL USANDO L'ID IDENTIFICATO DALL'AI
                     if "id_collega_selezionato" in res and res["id_collega_selezionato"] is not None:
@@ -405,7 +415,7 @@ if utente_connesso:
         nomi_puliti = [
             c.replace("_", " ").capitalize() 
             for c in st.session_state.campi_mancanti 
-            if c.lower().strip() != "mancanti" and c != "orario_promemoria" and c != "nota_collega" and c != "id_collega_selezionato"
+            if c.lower().strip() != "mancanti" and c != "orario_promemoria" and c != "nota_collega" and c != "id_collega_selezionato" and c != "oggetto_email"
         ]
         if nomi_puliti:
             st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
@@ -517,6 +527,13 @@ if utente_connesso:
             placeholder="esempio@azienda.com"
         )
         
+        # NUOVO BOX DI INPUT AUTOPRECOMPILATO PER L'OGGETTO EMAIL
+        st.session_state.oggetto_email = st.text_input(
+            "Oggetto dell'E-mail",
+            value=st.session_state.oggetto_email,
+            placeholder="Es. Segnalazione attività commerciale"
+        )
+        
         st.session_state.messaggio_email_personalizzato = st.text_area(
             "Aggiungi un messaggio o una nota per il collega (Opzionale)",
             value=st.session_state.messaggio_email_personalizzato,
@@ -593,6 +610,7 @@ if utente_connesso:
                     user_email=utente_connesso["email"],
                     user_real_name=utente_connesso["nome"], 
                     email_collega=st.session_state.email_collega,
+                    oggetto_email=st.session_state.oggetto_email, # Passaggio del nuovo oggetto email automatico
                     dati_evento=st.session_state.form_data,
                     messaggio_personalizzato=st.session_state.messaggio_email_personalizzato
                 )
@@ -609,5 +627,6 @@ if utente_connesso:
         # Reset dei campi specifici e degli avvisi
         st.session_state.campi_mancanti = []
         st.session_state.email_collega = ""
+        st.session_state.oggetto_email = ""
         st.session_state.messaggio_email_personalizzato = ""
         st.session_state.invia_email_attivo = False
