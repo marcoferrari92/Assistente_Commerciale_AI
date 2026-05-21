@@ -369,7 +369,31 @@ if utente_connesso:
 
     
     # --- LOGICA INTERFACCIA PRINCIPALE ---
-    st.title("Imprendo Morpheus")
+    # Definiamo la funzione per il popup (st.dialog)
+    @st.dialog("Scollegati dal Sistema")
+    def mostra_popup_matrix():
+        st.write(r"""
+        *"Matrix è un sistema, Neo. E quel sistema è nostro nemico. Ma quando ci sei dentro ti guardi intorno e cosa vedi? 
+        Uomini d'affari, insegnanti, avvocati, falegnami.... le proiezioni mentali della gente che vogliamo salvare. 
+        Ma finché non le avremo salvate, queste persone faranno parte di quel sistema, e questo le rende nostre nemiche. 
+        Devi capire che la maggior parte di loro non è pronta per essere scollegata. Tanti di loro sono così assuefatti, 
+        così disperatamente dipendenti dal sistema, che combatterebbero per difenderlo."*
+
+        Usa le AI con coscienza.
+        """)
+        if st.button("Chiudi", use_container_width=True):
+            st.rerun()
+
+    # Layout a due colonne per affiancare il Titolo e il Pulsante
+    col_titolo, col_pulsante = st.columns([0.8, 0.2], vertical_alignment="bottom")
+    
+    with col_titolo:
+        st.title("Imprendo Morpheus")
+        
+    with col_pulsante:
+        if st.button("🔴 Matrix", use_container_width=True):
+            mostra_popup_matrix()
+
     st.divider()
     st.write("### Assistente Vocale")
     st.write("")
