@@ -86,19 +86,21 @@ def gestisci_autenticazione_microsoft(account, scopes):
     """Gestisce il flusso visivo di autenticazione se il token è scaduto o assente"""
     if not account.is_authenticated:
         redirect_uri = "https://tuo-app-streamlit.streamlit.app/" 
-        url, state = account.conauth.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
+        
+        # CORREZIONE CRITICA: cambiato account.conauth con account.connection
+        url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
         
         st.warning("⚠️ L'applicazione non è connessa o ha perso la connessione al tuo Outlook aziendale.")
         st.markdown(f"[🔗 Clicca qui per autorizzare l'applicazione su Microsoft]({url})")
         
         result_url = st.text_input("Incolla qui l'URL della pagina su cui sei stato reindirizzato:", key="exchange_auth_url_global")
         if result_url:
-            if account.conauth.request_token(result_url, state=state, redirect_uri=redirect_uri):
+            # CORREZIONE CRITICA: cambiato account.conauth con account.connection
+            if account.connection.request_token(result_url, state=state, redirect_uri=redirect_uri):
                 st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
                 st.rerun()
         return False
     return True
-
 
 def crea_evento_su_exchange(user_email, dati_evento):
     scopes = ['calendars.readwrite', 'mail.send']
