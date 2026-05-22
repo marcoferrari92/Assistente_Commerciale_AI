@@ -85,7 +85,7 @@ def ottieni_account_exchange(scopes):
 def gestisci_autenticazione_microsoft(account, scopes):
     """Gestisce il flusso visivo di autenticazione se il token è scaduto o assente"""
     if not account.is_authenticated:
-        redirect_uri = "https://tuo-app-streamlit.streamlit.app/" 
+        redirect_uri = "https://imprendoai.streamlit.app/" 
         
         # CORREZIONE CRITICA: cambiato account.conauth con account.connection
         url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
