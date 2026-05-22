@@ -126,14 +126,8 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
         return False
     return True
 
-def crea_evento_su_exchange(user_email, dati_evento):
-    scopes = ['calendars.readwrite', 'mail.send']
-    account = ottieni_account_exchange(scopes)
-    
-    # Passiamo "calendario" come suffisso per la chiave
-    if not account or not gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso="calendario"):
-        return False
-
+def crea_evento_su_exchange(account, user_email, dati_evento):
+    """Esegue la creazione dell'evento supponendo l'account già autenticato"""
     try:
         schedule = account.schedule(resource=user_email)
         calendar = schedule.get_default_calendar()
@@ -148,21 +142,14 @@ def crea_evento_su_exchange(user_email, dati_evento):
         new_event.end = end_datetime
         
         new_event.save()
-        st.success(f"📅 Promemoria sincronizzato su Outlook per {user_email}!")
         return True
-        
     except Exception as e:
         st.error(f"Errore durante l'invio dell'evento a Exchange: {e}")
         return False
 
 
-def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    scopes = ['calendars.readwrite', 'mail.send']
-    account = ottieni_account_exchange(scopes)
-    
-    if not account or not gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso="email"):
-        return False
-
+def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
+    """Esegue l'invio dell'email supponendo l'account già autenticato"""
     try:
         mailbox = account.mailbox(resource=user_email)
         message = mailbox.new_message()
@@ -192,7 +179,6 @@ def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email
         
         message.body = corpo_email
 
-        # CORREZIONE SINTASSI ALLEGATI O365 IN MEMORIA
         if file_caricati:
             for file in file_caricati:
                 message.attachments.add(
@@ -201,9 +187,7 @@ def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email
                 )
         
         message.send(save_to_sent_items=True)
-        st.success(f"📧 Email inviata con successo a {email_collega}!")
         return True
-        
     except Exception as e:
         st.error(f"Errore durante l'invio dell'email: {e}")
         return False
