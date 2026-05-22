@@ -138,7 +138,6 @@ def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email
     scopes = ['calendars.readwrite', 'mail.send']
     account = ottieni_account_exchange(scopes)
     
-    # Passiamo "email" come suffisso per la chiave
     if not account or not gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso="email"):
         return False
 
@@ -171,10 +170,13 @@ def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email
         
         message.body = corpo_email
 
+        # CORREZIONE SINTASSI ALLEGATI O365 IN MEMORIA
         if file_caricati:
             for file in file_caricati:
-                file_bytes = file.getvalue()
-                message.attachments.add([(file.name, file_bytes)])
+                message.attachments.add(
+                    attachment=file.getvalue(), 
+                    attachment_name=file.name
+                )
         
         message.send()
         st.success(f"📧 Email inviata con successo a {email_collega}!")
