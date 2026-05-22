@@ -82,20 +82,22 @@ def ottieni_account_exchange(scopes):
     return Account(credentials, tenant_id=tenant_id, scopes=scopes)
 
 
-def gestisci_autenticazione_microsoft(account, scopes):
-    """Gestisce il flusso visivo di autenticazione se il token è scaduto o assente"""
+def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
+    """Gestisce il flusso visivo di autenticazione usando una chiave dinamica per evitare duplicati"""
     if not account.is_authenticated:
         redirect_uri = "https://imprendoai.streamlit.app/" 
         
-        # CORREZIONE CRITICA: cambiato account.conauth con account.connection
         url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
         
         st.warning("⚠️ L'applicazione non è connessa o ha perso la connessione al tuo Outlook aziendale.")
         st.markdown(f"[🔗 Clicca qui per autorizzare l'applicazione su Microsoft]({url})")
         
-        result_url = st.text_input("Incolla qui l'URL della pagina su cui sei stato reindirizzato:", key="exchange_auth_url_global")
+        # CORREZIONE CRITICA: key diventa dinamico usando il suffisso passato dalla funzione madre
+        result_url = st.text_input(
+            "Incolla qui l'URL della pagina su cui sei stato reindirizzato:", 
+            key=f"exchange_auth_url_{chiave_suffisso}"
+        )
         if result_url:
-            # CORREZIONE CRITICA: cambiato account.conauth con account.connection
             if account.connection.request_token(result_url, state=state, redirect_uri=redirect_uri):
                 st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
                 st.rerun()
@@ -106,7 +108,8 @@ def crea_evento_su_exchange(user_email, dati_evento):
     scopes = ['calendars.readwrite', 'mail.send']
     account = ottieni_account_exchange(scopes)
     
-    if not account or not gestisci_autenticazione_microsoft(account, scopes):
+    # Passiamo "calendario" come suffisso per la chiave
+    if not account or not gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso="calendario"):
         return False
 
     try:
@@ -135,9 +138,8 @@ def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email
     scopes = ['calendars.readwrite', 'mail.send']
     account = ottieni_account_exchange(scopes)
     
-    # CORREZIONE CRITICA: Se non è autenticato, ora mostra il box di login anche qui 
-    # anziché bloccarsi con un errore silenzioso in background
-    if not account or not gestisci_autenticazione_microsoft(account, scopes):
+    # Passiamo "email" come suffisso per la chiave
+    if not account or not gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso="email"):
         return False
 
     try:
