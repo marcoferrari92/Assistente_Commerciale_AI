@@ -83,24 +83,46 @@ def ottieni_account_exchange(scopes):
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Gestisce il flusso visivo di autenticazione usando una chiave dinamica per evitare duplicati"""
+    """Gestisce il flusso visivo di autenticazione salvando lo 'state' in session_state per evitare crash"""
     if not account.is_authenticated:
         redirect_uri = "https://imprendoai.streamlit.app/" 
         
-        url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
+        # Inizializziamo le chiavi di memoria se non esistono
+        if f"microsoft_state_{chiave_suffisso}" not in st.session_state:
+            st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
+        if f"microsoft_url_{chiave_suffisso}" not in st.session_state:
+            st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
+
+        # Generiamo l'URL di login SOLO se non lo abbiamo già generato prima
+        if not st.session_state[f"microsoft_url_{chiave_suffisso}"]:
+            url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
+            st.session_state[f"microsoft_url_{chiave_suffisso}"] = url
+            st.session_state[f"microsoft_state_{chiave_suffisso}"] = state
+        
+        url = st.session_state[f"microsoft_url_{chiave_suffisso}"]
+        state = st.session_state[f"microsoft_state_{chiave_suffisso}"]
         
         st.warning("⚠️ L'applicazione non è connessa o ha perso la connessione al tuo Outlook aziendale.")
         st.markdown(f"[🔗 Clicca qui per autorizzare l'applicazione su Microsoft]({url})")
         
-        # CORREZIONE CRITICA: key diventa dinamico usando il suffisso passato dalla funzione madre
         result_url = st.text_input(
             "Incolla qui l'URL della pagina su cui sei stato reindirizzato:", 
             key=f"exchange_auth_url_{chiave_suffisso}"
         )
         if result_url:
-            if account.connection.request_token(result_url, state=state, redirect_uri=redirect_uri):
-                st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
-                st.rerun()
+            try:
+                # Usiamo lo 'state' salvato in modo sicuro nella memoria di Streamlit
+                if account.connection.request_token(result_url, state=state, redirect_uri=redirect_uri):
+                    # Puliamo la memoria a successo ottenuto
+                    st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
+                    st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
+                    st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
+                    st.rerun()
+            except Exception as token_err:
+                st.error(f"Errore durante lo scambio del token. Riprova a cliccare sul link. Dettagli: {token_err}")
+                # Reset di sicurezza in caso di token invalido/scaduto per rigenerarne uno pulito al prossimo giro
+                st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
+                st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
         return False
     return True
 
