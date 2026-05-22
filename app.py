@@ -178,7 +178,7 @@ def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email
                     attachment_name=file.name
                 )
         
-        message.send()
+        message.send(save_to_sent_items=True)
         st.success(f"📧 Email inviata con successo a {email_collega}!")
         return True
         
