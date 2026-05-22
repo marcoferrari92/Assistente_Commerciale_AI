@@ -665,7 +665,8 @@ if utente_connesso:
                     email_collega=st.session_state.email_collega,
                     oggetto_email=st.session_state.oggetto_email, 
                     dati_evento=st.session_state.form_data,
-                    messaggio_personalizzato=st.session_state.messaggio_email_personalizzato
+                    messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
+                    file_caricati=uploaded_files # <--- AGGIUNGI QUESTO PARAMETRO QUI!
                 )
         
         final_data = st.session_state.form_data.copy()
