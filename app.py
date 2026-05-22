@@ -303,7 +303,7 @@ if utente_connesso:
 
         REGOLE PER IL CAMPO 'oggetto':
         - Inserisci solo il motivo che ha generato l'evento. 
-        - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di massimo 10 parole.
+        - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di maximum 10 parole.
         - CRITICO: Se non dice nulla di utile per l'oggetto, scrivi null.
 
         REGOLE PER IL CAMPO 'vibes':
@@ -477,6 +477,9 @@ if utente_connesso:
         ]
         if nomi_puliti:
             st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
+
+    # Inizializziamo globalmente la variabile per gli allegati in modo che sia accessibile ovunque
+    uploaded_files = None
 
     # --- CREAZIONE DELLE TAB ---
     tab_dati, tab_allegati, tab_condividi = st.tabs(["📝 Evento", "📸 Allegati", "✉️ Condividi"])
@@ -661,9 +664,19 @@ if utente_connesso:
         calendario_ok = False
         email_ok = False
         
+        # Definizione degli scope necessari (Calendar per eventi, Mail per invio e salvataggio in inviati)
+        scopes_calendario = ['calendars.readwrite']
+        scopes_email = ['mail.send', 'mail.readwrite']
+        
         # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
         if st.session_state.form_data["salva_su_calendario"]:
-            calendario_ok = crea_evento_su_exchange(utente_connesso["email"], st.session_state.form_data)
+            account_cal = ottieni_account_exchange(scopes_calendario)
+            if account_cal and gestisci_autenticazione_microsoft(account_cal, scopes_calendario, "calendario"):
+                calendario_ok = crea_evento_su_exchange(
+                    account=account_cal,
+                    user_email=utente_connesso["email"],
+                    dati_evento=st.session_state.form_data
+                )
             
         # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
         if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
@@ -671,15 +684,18 @@ if utente_connesso:
                 # Salviamo l'email corrente per il banner di notifica
                 destinatario_notifica = st.session_state.email_collega
                 
-                email_ok = invia_email_collega(
-                    user_email=utente_connesso["email"],
-                    user_real_name=utente_connesso["nome"], 
-                    email_collega=st.session_state.email_collega,
-                    oggetto_email=st.session_state.oggetto_email, 
-                    dati_evento=st.session_state.form_data,
-                    messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
-                    file_caricati=uploaded_files
-                )
+                account_mail = ottieni_account_exchange(scopes_email)
+                if account_mail and gestisci_autenticazione_microsoft(account_mail, scopes_email, "email"):
+                    email_ok = invia_email_collega(
+                        account=account_mail,
+                        user_email=utente_connesso["email"],
+                        user_real_name=utente_connesso["nome"], 
+                        email_collega=st.session_state.email_collega,
+                        oggetto_email=st.session_state.oggetto_email, 
+                        dati_evento=st.session_state.form_data,
+                        messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
+                        file_caricati=uploaded_files
+                    )
         
         final_data = st.session_state.form_data.copy()
         if final_data["promemoria"]:
@@ -694,6 +710,9 @@ if utente_connesso:
         # --- BANNER DI CONFERMA STABILI ---
         st.success("✅ Evento registrato correttamente nel database aziendale!")
         
+        if st.session_state.form_data["salva_su_calendario"] and calendario_ok:
+            st.success("📅 Appuntamento inserito nel tuo calendario di Outlook!")
+            
         if email_ok:
             st.success(f"📧 Email inviata con successo a {destinatario_notifica} e salvata in Posta Inviata!")
             
