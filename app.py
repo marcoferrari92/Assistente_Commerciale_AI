@@ -650,23 +650,29 @@ if utente_connesso:
     st.divider()
     if st.button("💾 SALVA EVENTO SUL DATABASE", type="primary", use_container_width=True):
         st.balloons()
-        st.success("Evento registrato correttamente!")
+        
+        # Variabili di controllo per i messaggi di successo
+        calendario_ok = False
+        email_ok = False
         
         # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
         if st.session_state.form_data["salva_su_calendario"]:
-            crea_evento_su_exchange(utente_connesso["email"], st.session_state.form_data)
+            calendario_ok = crea_evento_su_exchange(utente_connesso["email"], st.session_state.form_data)
             
         # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
         if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
             with st.spinner("Invio della mail al collega in corso..."):
-                invia_email_collega(
+                # Salviamo l'email corrente per il banner di notifica
+                destinatario_notifica = st.session_state.email_collega
+                
+                email_ok = invia_email_collega(
                     user_email=utente_connesso["email"],
                     user_real_name=utente_connesso["nome"], 
                     email_collega=st.session_state.email_collega,
                     oggetto_email=st.session_state.oggetto_email, 
                     dati_evento=st.session_state.form_data,
                     messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
-                    file_caricati=uploaded_files # <--- AGGIUNGI QUESTO PARAMETRO QUI!
+                    file_caricati=uploaded_files
                 )
         
         final_data = st.session_state.form_data.copy()
@@ -676,11 +682,13 @@ if utente_connesso:
         if final_data["orario_promemoria"]:
             final_data["orario_promemoria"] = final_data["orario_promemoria"].strftime("%H:%M")
             
-        st.write("Dati inviati:", final_data)
-        
-        # Reset dei campi specifici e degli avvisi
+        # Resettiamo solo la lista dei campi vuoti rilevati dall'AI
         st.session_state.campi_mancanti = []
-        st.session_state.email_collega = ""
-        st.session_state.oggetto_email = ""
-        st.session_state.messaggio_email_personalizzato = ""
-        st.session_state.invia_email_attivo = False
+        
+        # --- BANNER DI CONFERMA STABILI ---
+        st.success("✅ Evento registrato correttamente nel database aziendale!")
+        
+        if email_ok:
+            st.success(f"📧 Email inviata con successo a {destinatario_notifica} e salvata in Posta Inviata!")
+            
+        st.write("Dati inviati:", final_data)
