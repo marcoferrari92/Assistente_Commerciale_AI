@@ -63,39 +63,48 @@ st.markdown(f"""
 
 
 # --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
-def crea_evento_su_exchange(user_email, dati_evento):
+
+def ottieni_account_exchange(scopes):
+    """Funzione centralizzata per inizializzare l'account O365"""
     from O365 import Account
     
-    # CONTROLLO SE LE CHIAVI ESISTONO NEI SECRETS
     if "microsoft_exchange" not in st.secrets:
         st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
-        return False
+        return None
         
-    # Estraiamo le credenziali in modo sicuro senza scriverle nel codice
     credentials = (
         st.secrets["microsoft_exchange"]["client_id"], 
         st.secrets["microsoft_exchange"]["client_secret"]
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # Aggiornato per includere sia calendario che invio mail
-    scopes = ['calendars.readwrite', 'mail.send']
-    
-    # Inizializziamo l'account usando le variabili protette
-    account = Account(credentials, tenant_id=tenant_id)
-    
+    # Inizializza l'account (O365 gestisce internamente il salvataggio/lettura del file token)
+    return Account(credentials, tenant_id=tenant_id, scopes=scopes)
+
+
+def gestisci_autenticazione_microsoft(account, scopes):
+    """Gestisce il flusso visivo di autenticazione se il token è scaduto o assente"""
     if not account.is_authenticated:
         redirect_uri = "https://tuo-app-streamlit.streamlit.app/" 
         url, state = account.conauth.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
         
-        st.warning("⚠️ L'applicazione non è ancora connessa al tuo Outlook aziendale.")
-        st.markdown(f"[🔗 Clicca qui per autorizzare Morpheus su Microsoft]({url})")
+        st.warning("⚠️ L'applicazione non è connessa o ha perso la connessione al tuo Outlook aziendale.")
+        st.markdown(f"[🔗 Clicca qui per autorizzare l'applicazione su Microsoft]({url})")
         
-        result_url = st.text_input("Incolla qui l'URL della pagina su cui sei stato reindirizzato:", key="exchange_auth_url")
+        result_url = st.text_input("Incolla qui l'URL della pagina su cui sei stato reindirizzato:", key="exchange_auth_url_global")
         if result_url:
             if account.conauth.request_token(result_url, state=state, redirect_uri=redirect_uri):
                 st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
                 st.rerun()
+        return False
+    return True
+
+
+def crea_evento_su_exchange(user_email, dati_evento):
+    scopes = ['calendars.readwrite', 'mail.send']
+    account = ottieni_account_exchange(scopes)
+    
+    if not account or not gestisci_autenticazione_microsoft(account, scopes):
         return False
 
     try:
@@ -121,23 +130,12 @@ def crea_evento_su_exchange(user_email, dati_evento):
 
 
 def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    from O365 import Account
-    
-    if "microsoft_exchange" not in st.secrets:
-        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets!")
-        return False
-        
-    credentials = (
-        st.secrets["microsoft_exchange"]["client_id"], 
-        st.secrets["microsoft_exchange"]["client_secret"]
-    )
-    tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     scopes = ['calendars.readwrite', 'mail.send']
+    account = ottieni_account_exchange(scopes)
     
-    account = Account(credentials, tenant_id=tenant_id)
-    
-    if not account.is_authenticated:
-        st.error("⚠️ L'applicazione non è autenticata su Microsoft Office 365.")
+    # CORREZIONE CRITICA: Se non è autenticato, ora mostra il box di login anche qui 
+    # anziché bloccarsi con un errore silenzioso in background
+    if not account or not gestisci_autenticazione_microsoft(account, scopes):
         return False
 
     try:
@@ -145,8 +143,6 @@ def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email
         message = mailbox.new_message()
         
         message.to.add(email_collega)
-        
-        # UTILIZZO DELL'OGGETTO EMAIL AUTOMATICO O DI BACKUP
         message.subject = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
         
         promemoria_str = dati_evento['promemoria'].strftime('%d/%m/%Y') if dati_evento['promemoria'] else 'Non impostato'
@@ -167,26 +163,23 @@ def invia_email_collega(user_email, user_real_name, email_collega, oggetto_email
         corpo_email += f"📝 Note:\n{dati_evento['note']}\n\n"
         corpo_email += f"🚀 Prossimo Step: {dati_evento['next_step']}\n"
         corpo_email += f"🔔 Promemoria Calendario: {promemoria_str} alle ore {orario_str}\n\n"
-        
-        # AGGIUNTA DELLA FIRMA CON IL NOME REALE DAL SECRET UTENTE
         corpo_email += f"Un saluto,\n{user_real_name}"
         
         message.body = corpo_email
 
-        # --- AGGIUNTA DEGLI ALLEGATI REALI ---
         if file_caricati:
             for file in file_caricati:
                 file_bytes = file.getvalue()
                 message.attachments.add([(file.name, file_bytes)])
         
         message.send()
-        st.success(f"📧 Email inviata con successo a {email_collega} con i relativi allegati!")
+        st.success(f"📧 Email inviata con successo a {email_collega}!")
         return True
         
     except Exception as e:
         st.error(f"Errore durante l'invio dell'email: {e}")
         return False
-
+        
 
 # --- 4. CONTROLLO ACCESSO MULTI-UTENTE (IMPRENDO MORPHEUS) ---
 def login_commerciale():
