@@ -42,6 +42,8 @@ if "messaggio_email_personalizzato" not in st.session_state:
     st.session_state.messaggio_email_personalizzato = ""
 if "invia_email_attivo" not in st.session_state:
     st.session_state.invia_email_attivo = False
+if "o365_token_storage" not in st.session_state:
+    st.session_state.o365_token_storage = None
 
 
 # --- 2.5 COLORAZIONE DINAMICA DELLO SFONDO (CSS INJECTION) ---
@@ -65,8 +67,8 @@ st.markdown(f"""
 # --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
 
 def ottieni_account_exchange(scopes):
-    """Funzione centralizzata per inizializzare l'account O365"""
-    from O365 import Account
+    """Funzione centralizzata per inizializzare l'account O365 usando la memoria interna di Streamlit"""
+    from O365 import Account, DictTokenBackend
     
     if "microsoft_exchange" not in st.secrets:
         st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
@@ -78,16 +80,20 @@ def ottieni_account_exchange(scopes):
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # Inizializza l'account (O365 gestisce internamente il salvataggio/lettura del file token)
-    return Account(credentials, tenant_id=tenant_id, scopes=scopes)
+    # Salva il file token direttamente nel session_state invece che su disco fisso
+    if st.session_state.o365_token_storage is None:
+        st.session_state.o365_token_storage = {}
+        
+    token_backend = DictTokenBackend(token_dict=st.session_state.o365_token_storage)
+    return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_backend=token_backend)
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Verifica l'autenticazione leggendo i parametri dall'URL, senza distruggere la UI."""
+    """Verifica l'autenticazione leggendo i parametri dall'URL in memoria senza mandare in crash la UI."""
     if account.is_authenticated:
         return True
 
-    # Intercettiamo il codice se siamo appena tornati da Microsoft
+    # Intercettiamo il codice generato dal redirect di Microsoft
     parametric_code = st.query_params.get("code")
     parametric_state = st.query_params.get("state")
     
@@ -99,6 +105,7 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
             reconstructed_url += f"&state={parametric_state}"
             
         try:
+            # Popola l'autenticazione nel backend in memoria
             if account.connection.request_token(reconstructed_url, state=saved_state, redirect_uri=redirect_uri):
                 st.query_params.clear()
                 st.success("✅ Connessione completata!")
