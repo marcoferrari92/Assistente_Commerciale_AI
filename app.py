@@ -92,7 +92,7 @@ def ottieni_account_exchange(scopes):
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Gestisce il flusso visivo di autenticazione iniettando il backend corretto per evitare il bug .pop"""
+    """Gestisce l'autenticazione tramite copia-incolla analizzando manualmente l'URL per evitare il bug .pop"""
     if not account.is_authenticated:
         redirect_uri = "https://imprendoai.streamlit.app/" 
         
@@ -107,29 +107,41 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
             st.session_state[f"microsoft_state_{chiave_suffisso}"] = state
         
         url = st.session_state[f"microsoft_url_{chiave_suffisso}"]
-        state = st.session_state[f"microsoft_state_{chiave_suffisso}"]
         
         st.warning("⚠️ L'applicazione non è connessa o ha perso la connessione al tuo Outlook aziendale.")
         st.markdown(f"[🔗 Clicca qui per autorizzare l'applicazione su Microsoft]({url})")
         
         result_url = st.text_input(
-            "Incolla qui l'URL della pagina su cui sei stato reindirizzato:", 
+            "Incolla qui l'URL della pagina su cui sei stato reindirizzato e premi INVIO:", 
             key=f"exchange_auth_url_{chiave_suffisso}"
         )
+        
         if result_url:
             try:
-                # CORREZIONE CRITICA: Forza l'accoppiamento del backend dei token alla richiesta di rete
-                # Questo evita che la libreria interna trovi un valore "None" e fallisca con l'errore .pop
+                # --- CORREZIONE CRITICA: Estrazione manuale dei parametri dall'URL incollato ---
+                from urllib.parse import urlparse, parse_qs
+                parsed_url = urlparse(result_url)
+                query_params = parse_qs(parsed_url.query)
+                
+                code_estratto = query_params.get('code', [None])[0]
+                state_estratto = query_params.get('state', [None])[0]
+                
+                if not code_estratto:
+                    st.error("❌ L'URL incollato non contiene un codice di autenticazione valido. Assicurati di averlo copiato interamente.")
+                    return False
+
+                # Forza l'accoppiamento del backend dei token
                 if account.connection.token_backend is None:
                     account.connection.token_backend = account.con.token_backend
 
-                if account.connection.request_token(result_url, state=state, redirect_uri=redirect_uri):
+                # Richiediamo il token usando direttamente i parametri stabili estratti a mano
+                if account.connection.request_token(result_url, state=state_estratto, redirect_uri=redirect_uri):
                     st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
                     st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
                     st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
                     st.rerun()
             except Exception as token_err:
-                st.error(f"Errore durante lo scambio del token. Riprova a cliccare sul link. Dettagli: {token_err}")
+                st.error(f"Errore durante lo scambio del token: {token_err}")
                 st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
                 st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
         return False
