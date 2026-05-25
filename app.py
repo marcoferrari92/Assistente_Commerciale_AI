@@ -65,9 +65,9 @@ st.markdown(f"""
 
 
 def ottieni_account_exchange(scopes):
-    """Funzione centralizzata per inizializzare l'account O365 gestendo il token sul server cloud"""
+    """Funzione centralizzata per inizializzare l'account O365 su Streamlit Cloud usando il file system temporaneo"""
     from O365 import Account
-    from O365.utils import FileSystemTokenBackend  # Importazione corretta del backend standard
+    from O365.utils import FileSystemTokenBackend
     import os
     import json
     
@@ -81,10 +81,10 @@ def ottieni_account_exchange(scopes):
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # Cartella temporanea con permessi di scrittura su Streamlit Cloud
+    # Cartella di sistema con permessi di scrittura abilitati su Streamlit Cloud
     token_path = "/tmp"
     
-    # Recuperiamo in modo sicuro lo username per differenziare i token
+    # Identifichiamo l'utente loggato per evitare conflitti di token tra colleghi
     user_name = "global"
     if "user_data" in st.session_state and st.session_state.user_data:
         user_name = st.session_state.user_data.get("username", "global")
@@ -93,7 +93,7 @@ def ottieni_account_exchange(scopes):
         
     token_name = f"o365_token_{user_name}.txt"
     
-    # Se il token è già presente in session_state, lo ripristiniamo nella cartella temporanea
+    # Se il token è stato salvato nello stato globale ma il file temporaneo è sparito (es. riavvio server), lo ricostruiamo
     if st.session_state.get("o365_token_storage") and not os.path.exists(os.path.join(token_path, token_name)):
         try:
             with open(os.path.join(token_path, token_name), 'w') as f:
@@ -101,19 +101,21 @@ def ottieni_account_exchange(scopes):
         except:
             pass
 
-    # Inizializziamo il backend nel modo richiesto dalla libreria O365
+    # Configuriamo il backend nativo corretto per evitare i TypeError di O365
     my_backend = FileSystemTokenBackend(token_path=token_path, token_filename=token_name)
-
-    # Passiamo il backend ad Account tramite il parametro corretto 'token_backend'
     return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_backend=my_backend)
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Verifica l'autenticazione leggendo i parametri dall'URL in memoria senza mandare in crash la UI."""
+    """Verifica l'autenticazione salvando il token in modo stabile e pulendo l'URL per rompere il loop di refresh"""
+    import os
+    import json
+
+    # Se l'account O365 vede il file token valido in /tmp, restituisce True direttamente
     if account.is_authenticated:
         return True
 
-    # Intercettiamo il codice generato dal redirect di Microsoft
+    # Controlliamo i parametri URL inseriti da Microsoft nel browser
     parametric_code = st.query_params.get("code")
     parametric_state = st.query_params.get("state")
     
@@ -125,20 +127,19 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
             reconstructed_url += f"&state={parametric_state}"
             
         try:
-            # Popola l'autenticazione nel backend temporaneo
+            # Inviamo la richiesta di scambio codice -> token a Microsoft
             if account.connection.request_token(reconstructed_url, state=saved_state, redirect_uri=redirect_uri):
-                # Sincronizziamo il nuovo token generato dentro il session_state globale
-                import os
-                # Accediamo ai parametri corretti dal backend dell'account
+                # Estraiamo il file token appena creato in /tmp e lo persistiamo nel session_state globale
                 backend = account.con.token_backend
                 token_full_path = os.path.join(backend.token_path, backend.token_filename)
                 
                 if os.path.exists(token_full_path):
                     with open(token_full_path, 'r') as f:
                         st.session_state.o365_token_storage = json.load(f)
-                        
+                
+                # PULIZIA CRUCIALE: Rimuove '?code=...' dalla barra degli indirizzi e stabilizza l'app
                 st.query_params.clear()
-                st.success("✅ Connessione completata!")
+                st.success("✅ Connessione completata con successo!")
                 st.rerun()
                 return True
         except:
@@ -277,6 +278,10 @@ if utente_connesso:
         # Questa chiamata intercetta l'eventuale ritorno da Microsoft nell'URL
         connesso_a_microsoft = gestisci_autenticazione_microsoft(account_controllo, scopes_necessari, "globale")
         
+        if account_controllo:
+        # Questa chiamata intercetta l'eventuale ritorno da Microsoft nell'URL prima di renderizzare il form
+        connesso_a_microsoft = gestisci_autenticazione_microsoft(account_controllo, scopes_necessari, "globale")
+        
         if connesso_a_microsoft:
             st.sidebar.success("🟢 Microsoft Outlook Connesso")
         else:
@@ -284,7 +289,7 @@ if utente_connesso:
             url, state = account_controllo.connection.get_authorization_url(requested_scopes=scopes_necessari, redirect_uri="https://imprendoai.streamlit.app/")
             st.session_state[f"microsoft_state_globale"] = state
             
-            # --- SOSTITUISCI IL VECCHIO LINK HTML CON QUESTO COMPONENTE NATIVO ---
+            # Utilizzo del componente nativo per agganciare la sessione cloud
             st.sidebar.link_button("🔗 Connetti Outlook", url, use_container_width=True)
     
     if st.sidebar.button("🚪 Logout"):
