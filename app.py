@@ -64,12 +64,12 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
-
 def ottieni_account_exchange(scopes):
     """Funzione centralizzata per inizializzare l'account O365 gestendo il token sul server cloud"""
     from O365 import Account
+    from O365.utils import FileSystemTokenBackend  # Importazione corretta del backend standard
     import os
+    import json
     
     if "microsoft_exchange" not in st.secrets:
         st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
@@ -81,11 +81,19 @@ def ottieni_account_exchange(scopes):
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # Usiamo la cartella temporanea standard di Linux (/tmp) su cui Streamlit Cloud ha pieni permessi di scrittura
+    # Cartella temporanea con permessi di scrittura su Streamlit Cloud
     token_path = "/tmp"
-    token_name = f"o365_token_{utente_connesso['username'] if 'utente_connesso' in globals() and utente_connesso else 'global'}.txt"
     
-    # Se il token è già in session_state, lo ricreiamo al volo nella cartella temporanea per O365
+    # Recuperiamo in modo sicuro lo username per differenziare i token
+    user_name = "global"
+    if "user_data" in st.session_state and st.session_state.user_data:
+        user_name = st.session_state.user_data.get("username", "global")
+    elif 'utente_connesso' in globals() and utente_connesso:
+        user_name = utente_connesso.get("username", "global")
+        
+    token_name = f"o365_token_{user_name}.txt"
+    
+    # Se il token è già presente in session_state, lo ripristiniamo nella cartella temporanea
     if st.session_state.get("o365_token_storage") and not os.path.exists(os.path.join(token_path, token_name)):
         try:
             with open(os.path.join(token_path, token_name), 'w') as f:
@@ -93,7 +101,11 @@ def ottieni_account_exchange(scopes):
         except:
             pass
 
-    return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_dest=token_path, token_filename=token_name)
+    # Inizializziamo il backend nel modo richiesto dalla libreria O365
+    my_backend = FileSystemTokenBackend(token_path=token_path, token_filename=token_name)
+
+    # Passiamo il backend ad Account tramite il parametro corretto 'token_backend'
+    return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_backend=my_backend)
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
