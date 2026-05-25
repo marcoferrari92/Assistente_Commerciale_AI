@@ -727,7 +727,7 @@ if utente_connesso:
                 # Salviamo l'email corrente per il banner di notifica
                 destinatario_notifica = st.session_state.email_collega
                 
-                account_mail = ottieni_account_exchange(scopes_email)
+                account_mail = ottieni_account_exchange(scopes_email, "email")
                 if account_mail and gestisci_autenticazione_microsoft(account_mail, scopes_email, "email"):
                     email_ok = invia_email_collega(
                         account=account_mail,
