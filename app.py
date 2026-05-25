@@ -42,8 +42,6 @@ if "messaggio_email_personalizzato" not in st.session_state:
     st.session_state.messaggio_email_personalizzato = ""
 if "invia_email_attivo" not in st.session_state:
     st.session_state.invia_email_attivo = False
-if "o365_token_storage" not in st.session_state:
-    st.session_state.o365_token_storage = None
 
 
 # --- 2.5 COLORAZIONE DINAMICA DELLO SFONDO (CSS INJECTION) ---
@@ -64,12 +62,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
+# --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
+
 def ottieni_account_exchange(scopes):
-    """Funzione centralizzata per inizializzare l'account O365 su Streamlit Cloud usando il file system temporaneo"""
+    """Funzione centralizzata per inizializzare l'account O365"""
     from O365 import Account
-    from O365.utils import FileSystemTokenBackend
-    import os
-    import json
     
     if "microsoft_exchange" not in st.secrets:
         st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
@@ -81,72 +78,53 @@ def ottieni_account_exchange(scopes):
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # Cartella di sistema con permessi di scrittura abilitati su Streamlit Cloud
-    token_path = "/tmp"
-    
-    # Identifichiamo l'utente loggato per evitare conflitti di token tra colleghi
-    user_name = "global"
-    if "user_data" in st.session_state and st.session_state.user_data:
-        user_name = st.session_state.user_data.get("username", "global")
-    elif 'utente_connesso' in globals() and utente_connesso:
-        user_name = utente_connesso.get("username", "global")
-        
-    token_name = f"o365_token_{user_name}.txt"
-    
-    # Se il token è stato salvato nello stato globale ma il file temporaneo è sparito (es. riavvio server), lo ricostruiamo
-    if st.session_state.get("o365_token_storage") and not os.path.exists(os.path.join(token_path, token_name)):
-        try:
-            with open(os.path.join(token_path, token_name), 'w') as f:
-                json.dump(st.session_state.o365_token_storage, f)
-        except:
-            pass
-
-    # Configuriamo il backend nativo corretto per evitare i TypeError di O365
-    my_backend = FileSystemTokenBackend(token_path=token_path, token_filename=token_name)
-    return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_backend=my_backend)
+    # Inizializza l'account (O365 gestisce internamente il salvataggio/lettura del file token)
+    return Account(credentials, tenant_id=tenant_id, scopes=scopes)
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Verifica l'autenticazione salvando il token in modo stabile e pulendo l'URL per rompere il loop di refresh"""
-    import os
-    import json
+    """Gestisce il flusso visivo di autenticazione salvando lo 'state' in session_state per evitare crash"""
+    if not account.is_authenticated:
+        redirect_uri = "https://imprendoai.streamlit.app/" 
+        
+        # Inizializziamo le chiavi di memoria se non esistono
+        if f"microsoft_state_{chiave_suffisso}" not in st.session_state:
+            st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
+        if f"microsoft_url_{chiave_suffisso}" not in st.session_state:
+            st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
 
-    # Se l'account O365 vede il file token valido in /tmp, restituisce True direttamente
-    if account.is_authenticated:
-        return True
-
-    # Controlliamo i parametri URL inseriti da Microsoft nel browser
-    parametric_code = st.query_params.get("code")
-    parametric_state = st.query_params.get("state")
-    
-    if parametric_code:
-        redirect_uri = "https://imprendoai.streamlit.app/"
-        saved_state = st.session_state.get(f"microsoft_state_{chiave_suffisso}")
-        reconstructed_url = f"{redirect_uri}?code={parametric_code}"
-        if parametric_state:
-            reconstructed_url += f"&state={parametric_state}"
-            
-        try:
-            # Inviamo la richiesta di scambio codice -> token a Microsoft
-            if account.connection.request_token(reconstructed_url, state=saved_state, redirect_uri=redirect_uri):
-                # Estraiamo il file token appena creato in /tmp e lo persistiamo nel session_state globale
-                backend = account.con.token_backend
-                token_full_path = os.path.join(backend.token_path, backend.token_filename)
-                
-                if os.path.exists(token_full_path):
-                    with open(token_full_path, 'r') as f:
-                        st.session_state.o365_token_storage = json.load(f)
-                
-                # PULIZIA CRUCIALE: Rimuove '?code=...' dalla barra degli indirizzi e stabilizza l'app
-                st.query_params.clear()
-                st.success("✅ Connessione completata con successo!")
-                st.rerun()
-                return True
-        except:
-            st.query_params.clear()
-            st.rerun()
-            
-    return account.is_authenticated
+        # Generiamo l'URL di login SOLO se non lo abbiamo già generato prima
+        if not st.session_state[f"microsoft_url_{chiave_suffisso}"]:
+            url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
+            st.session_state[f"microsoft_url_{chiave_suffisso}"] = url
+            st.session_state[f"microsoft_state_{chiave_suffisso}"] = state
+        
+        url = st.session_state[f"microsoft_url_{chiave_suffisso}"]
+        state = st.session_state[f"microsoft_state_{chiave_suffisso}"]
+        
+        st.warning("⚠️ L'applicazione non è connessa o ha perso la connessione al tuo Outlook aziendale.")
+        st.markdown(f"[🔗 Clicca qui per autorizzare l'applicazione su Microsoft]({url})")
+        
+        result_url = st.text_input(
+            "Incolla qui l'URL della pagina su cui sei stato reindirizzato:", 
+            key=f"exchange_auth_url_{chiave_suffisso}"
+        )
+        if result_url:
+            try:
+                # Usiamo lo 'state' salvato in modo sicuro nella memoria di Streamlit
+                if account.connection.request_token(result_url, state=state, redirect_uri=redirect_uri):
+                    # Puliamo la memoria a successo ottenuto
+                    st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
+                    st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
+                    st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
+                    st.rerun()
+            except Exception as token_err:
+                st.error(f"Errore durante lo scambio del token. Riprova a cliccare sul link. Dettagli: {token_err}")
+                # Reset di sicurezza in caso di token invalido/scaduto per rigenerarne uno pulito al prossimo giro
+                st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
+                st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
+        return False
+    return True
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
     """Esegue la creazione dell'evento supponendo l'account già autenticato"""
@@ -264,29 +242,10 @@ def login_commerciale():
 utente_connesso = login_commerciale()
 
 # --- 5. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
-# --- 5. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
 if utente_connesso:
+    # CORREZIONE AGGIUNTIVA: Fallback di sicurezza anche in fase di rendering sidebar
     nome_visualizzato = utente_connesso.get("nome", utente_connesso.get("username", "Utente").capitalize())
     st.sidebar.write(f"👤 Utente: **{nome_visualizzato}**")
-    
-    # --- NUOVO CONTROLLO DI AUTENTICAZIONE PREVENTIVA NELLA SIDEBAR ---
-    scopes_necessari = ['calendars.readwrite', 'mail.send', 'mail.readwrite']
-    # Usiamo un account generico per verificare lo stato globale di O365
-    account_controllo = ottieni_account_exchange(scopes_necessari)
-    
-    if account_controllo:
-        # Questa chiamata intercetta l'eventuale ritorno da Microsoft nell'URL prima di renderizzare il form
-        connesso_a_microsoft = gestisci_autenticazione_microsoft(account_controllo, scopes_necessari, "globale")
-    
-        if connesso_a_microsoft:
-            st.sidebar.success("🟢 Microsoft Outlook Connesso")
-        else:
-            st.sidebar.error("🔴 Microsoft Outlook Scollegato")
-            url, state = account_controllo.connection.get_authorization_url(requested_scopes=scopes_necessari, redirect_uri="https://imprendoai.streamlit.app/")
-            st.session_state[f"microsoft_state_globale"] = state
-            
-            # Utilizzo del componente nativo per agganciare la sessione cloud
-            st.sidebar.link_button("🔗 Connetti Outlook", url, use_container_width=True)
     
     if st.sidebar.button("🚪 Logout"):
         st.session_state.user_data = None
@@ -701,31 +660,32 @@ if utente_connesso:
     if st.button("💾 SALVA EVENTO SUL DATABASE", type="primary", use_container_width=True):
         st.balloons()
         
+        # Variabili di controllo per i messaggi di successo
         calendario_ok = False
         email_ok = False
         
+        # Definizione degli scope necessari (Calendar per eventi, Mail per invio e salvataggio in inviati)
         scopes_calendario = ['calendars.readwrite']
         scopes_email = ['mail.send', 'mail.readwrite']
         
-        # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE (Già autenticato!) ---
+        # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
         if st.session_state.form_data["salva_su_calendario"]:
             account_cal = ottieni_account_exchange(scopes_calendario)
-            if account_cal and account_cal.is_authenticated:
+            if account_cal and gestisci_autenticazione_microsoft(account_cal, scopes_calendario, "calendario"):
                 calendario_ok = crea_evento_su_exchange(
                     account=account_cal,
                     user_email=utente_connesso["email"],
                     dati_evento=st.session_state.form_data
                 )
-            else:
-                st.error("⚠️ Errore: Account Microsoft non autenticato per il calendario. Connettiti dalla barra laterale.")
             
-        # --- BLOCCO INVIO EMAIL DI CONDIVISIONE (Già autenticato!) ---
+        # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
         if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
             with st.spinner("Invio della mail al collega in corso..."):
+                # Salviamo l'email corrente per il banner di notifica
                 destinatario_notifica = st.session_state.email_collega
                 
                 account_mail = ottieni_account_exchange(scopes_email)
-                if account_mail and account_mail.is_authenticated:
+                if account_mail and gestisci_autenticazione_microsoft(account_mail, scopes_email, "email"):
                     email_ok = invia_email_collega(
                         account=account_mail,
                         user_email=utente_connesso["email"],
@@ -736,8 +696,6 @@ if utente_connesso:
                         messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
                         file_caricati=uploaded_files
                     )
-                else:
-                    st.error("⚠️ Errore: Account Microsoft non autenticato per le email. Connettiti dalla barra laterale.")
         
         final_data = st.session_state.form_data.copy()
         if final_data["promemoria"]:
