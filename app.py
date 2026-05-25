@@ -67,8 +67,9 @@ st.markdown(f"""
 # --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
 
 def ottieni_account_exchange(scopes):
-    """Funzione centralizzata per inizializzare l'account O365 usando la memoria interna di Streamlit"""
-    from O365 import Account, DictTokenBackend
+    """Funzione centralizzata per inizializzare l'account O365 gestendo il token sul server cloud"""
+    from O365 import Account
+    import os
     
     if "microsoft_exchange" not in st.secrets:
         st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
@@ -80,12 +81,19 @@ def ottieni_account_exchange(scopes):
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # Salva il file token direttamente nel session_state invece che su disco fisso
-    if st.session_state.o365_token_storage is None:
-        st.session_state.o365_token_storage = {}
-        
-    token_backend = DictTokenBackend(token_dict=st.session_state.o365_token_storage)
-    return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_backend=token_backend)
+    # Usiamo la cartella temporanea standard di Linux (/tmp) su cui Streamlit Cloud ha pieni permessi di scrittura
+    token_path = "/tmp"
+    token_name = f"o365_token_{utente_connesso['username'] if 'utente_connesso' in globals() and utente_connesso else 'global'}.txt"
+    
+    # Se il token è già in session_state, lo ricreiamo al volo nella cartella temporanea per O365
+    if st.session_state.get("o365_token_storage") and not os.path.exists(os.path.join(token_path, token_name)):
+        try:
+            with open(os.path.join(token_path, token_name), 'w') as f:
+                json.dump(st.session_state.o365_token_storage, f)
+        except:
+            pass
+
+    return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_dest=token_path, token_filename=token_name)
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
