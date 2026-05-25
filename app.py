@@ -760,7 +760,7 @@ if utente_connesso:
                             messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
                             file_caricati=uploaded_files
                         )
-                        st.write(f"Risposta finale della funzione di invio: {'E-mail partita' if email_ok else 'Errore durante l'esecuzione del codice d'invio'}")
+                        st.write(f"Risposta finale della funzione di invio: {'E-mail partita' if email_ok else 'Errore durante l\'esecuzione del codice d\'invio'}")
         else:
             st.warning("⚠️ L'invio e-mail automatico non è attivo o manca l'indirizzo del collega.")
         
