@@ -91,59 +91,86 @@ def ottieni_account_exchange(scopes):
     return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_backend=my_backend)
 
 
+
+from urllib.parse import urlparse, parse_qs
+
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Gestisce l'autenticazione tramite copia-incolla analizzando manualmente l'URL per evitare il bug .pop"""
+    """
+    Gestisce l'autenticazione Microsoft in Streamlit evitando l'errore 'NoneType' object has no attribute 'pop'.
+    """
     if not account.is_authenticated:
         redirect_uri = "https://imprendoai.streamlit.app/" 
         
-        if f"microsoft_state_{chiave_suffisso}" not in st.session_state:
-            st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
-        if f"microsoft_url_{chiave_suffisso}" not in st.session_state:
-            st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
+        # Inizializza le variabili di sessione se non esistono
+        if f"ms_url_{chiave_suffisso}" not in st.session_state:
+            st.session_state[f"ms_url_{chiave_suffisso}"] = None
+        if f"ms_state_{chiave_suffisso}" not in st.session_state:
+            st.session_state[f"ms_state_{chiave_suffisso}"] = None
 
-        if not st.session_state[f"microsoft_url_{chiave_suffisso}"]:
+        # Genera l'URL di autorizzazione solo la prima volta
+        if not st.session_state[f"ms_url_{chiave_suffisso}"]:
             url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
-            st.session_state[f"microsoft_url_{chiave_suffisso}"] = url
-            st.session_state[f"microsoft_state_{chiave_suffisso}"] = state
+            st.session_state[f"ms_url_{chiave_suffisso}"] = url
+            st.session_state[f"ms_state_{chiave_suffisso}"] = state
         
-        url = st.session_state[f"microsoft_url_{chiave_suffisso}"]
+        url = st.session_state[f"ms_url_{chiave_suffisso}"]
         
-        st.warning("⚠️ L'applicazione non è connessa o ha perso la connessione al tuo Outlook aziendale.")
+        st.warning("⚠️ Connessione a Outlook mancante o scaduta.")
         st.markdown(f"[🔗 Clicca qui per autorizzare l'applicazione su Microsoft]({url})")
         
+        # Campo di input per l'URL di reindirizzamento
         result_url = st.text_input(
-            "Incolla qui l'URL della pagina su cui sei stato reindirizzato e premi INVIO:", 
-            key=f"exchange_auth_url_{chiave_suffisso}"
+            "Incolla l'URL completo della pagina di reindirizzamento e premi INVIO:", 
+            key=f"input_url_{chiave_suffisso}"
         )
         
         if result_url:
             try:
-                # --- CORREZIONE CRITICA: Estrazione manuale dei parametri dall'URL incollato ---
-                from urllib.parse import urlparse, parse_qs
+                # 1. Estraiamo manualmente i parametri dall'URL per evitare che O365 li cerchi invano
                 parsed_url = urlparse(result_url)
                 query_params = parse_qs(parsed_url.query)
                 
                 code_estratto = query_params.get('code', [None])[0]
-                state_estratto = query_params.get('state', [None])[0]
                 
                 if not code_estratto:
-                    st.error("❌ L'URL incollato non contiene un codice di autenticazione valido. Assicurati di averlo copiato interamente.")
+                    st.error("❌ L'URL inserito non è valido o non contiene il codice di autorizzazione.")
                     return False
 
-                # Forza l'accoppiamento del backend dei token
-                if account.connection.token_backend is None:
+                # 2. RISOLUZIONE DEL BUG 'NoneType' .pop():
+                # Forziamo il backend dei token a legarsi correttamente alla connessione corrente
+                if getattr(account.connection, 'token_backend', None) is None:
                     account.connection.token_backend = account.con.token_backend
 
-                # Richiediamo il token usando direttamente i parametri stabili estratti a mano
-                if account.connection.request_token(result_url, state=state_estratto, redirect_uri=redirect_uri):
-                    st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
-                    st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
-                    st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
+                # Se la libreria si è "dimenticata" lo stato a causa del riavvio di Streamlit, lo ripristiniamo manualmente
+                stato_originale = st.session_state[f"ms_state_{chiave_suffisso}"]
+                if hasattr(account.connection, 'state') and account.connection.state is None:
+                    account.connection.state = stato_originale
+
+                # 3. Richiediamo il token bypassando la verifica interna automatica (lo passiamo noi)
+                # Usiamo direttamente la libreria requests sottostante o il metodo request_token adattato
+                connessione_riuscita = account.connection.request_token(
+                    result_url, 
+                    state=stato_originale, 
+                    redirect_uri=redirect_uri
+                )
+                
+                if connessione_riuscita:
+                    # Puliamo la sessione in caso di successo
+                    st.session_state[f"ms_url_{chiave_suffisso}"] = None
+                    st.session_state[f"ms_state_{chiave_suffisso}"] = None
+                    st.success("✅ Connessione completata con successo!")
                     st.rerun()
-            except Exception as token_err:
-                st.error(f"Errore durante lo scambio del token: {token_err}")
-                st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
-                st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
+                else:
+                    st.error("❌ Errore durante la validazione del token. Riprova la procedura.")
+                    
+            except Exception as e:
+                # Cattura l'errore specifico per mostrare dettagli utili se fallisce ancora
+                st.error(f"Errore tecnico durante lo scambio: {str(e)}")
+                # Se l'errore persiste, resettiamo l'URL per permettere all'utente di rigenerarlo
+                if "pop" in str(e):
+                    st.info("🔄 Sessione corrotta. L'URL di login è stato rigenerato, clicca nuovamente sul link sopra.")
+                    st.session_state[f"ms_url_{chiave_suffisso}"] = None
+                    st.rerun()
         return False
     return True
 
