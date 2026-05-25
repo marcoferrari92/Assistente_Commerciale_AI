@@ -65,8 +65,10 @@ st.markdown(f"""
 # --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
 
 def ottieni_account_exchange(scopes):
-    """Funzione centralizzata per inizializzare l'account O365"""
+    """Funzione centralizzata per inizializzare l'account O365 configurando il percorso sicuro in /tmp"""
     from O365 import Account
+    from O365.utils import FileSystemTokenBackend
+    import os
     
     if "microsoft_exchange" not in st.secrets:
         st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
@@ -78,22 +80,27 @@ def ottieni_account_exchange(scopes):
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # Inizializza l'account (O365 gestisce internamente il salvataggio/lettura del file token)
-    return Account(credentials, tenant_id=tenant_id, scopes=scopes)
+    # Utilizziamo la directory temporanea /tmp garantita con permessi di scrittura sul Cloud
+    token_path = "/tmp"
+    user_name = utente_connesso["username"] if ('utente_connesso' in globals() and utente_connesso) else "global"
+    token_name = f"o365_token_{user_name}.txt"
+    
+    # Inizializziamo esplicitamente il backend dei file per evitare errori di tipo NoneType
+    my_backend = FileSystemTokenBackend(token_path=token_path, token_filename=token_name)
+    
+    return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_backend=my_backend)
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Gestisce il flusso visivo di autenticazione salvando lo 'state' in session_state per evitare crash"""
+    """Gestisce il flusso visivo di autenticazione iniettando il backend corretto per evitare il bug .pop"""
     if not account.is_authenticated:
         redirect_uri = "https://imprendoai.streamlit.app/" 
         
-        # Inizializziamo le chiavi di memoria se non esistono
         if f"microsoft_state_{chiave_suffisso}" not in st.session_state:
             st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
         if f"microsoft_url_{chiave_suffisso}" not in st.session_state:
             st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
 
-        # Generiamo l'URL di login SOLO se non lo abbiamo già generato prima
         if not st.session_state[f"microsoft_url_{chiave_suffisso}"]:
             url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
             st.session_state[f"microsoft_url_{chiave_suffisso}"] = url
@@ -111,16 +118,18 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
         )
         if result_url:
             try:
-                # Usiamo lo 'state' salvato in modo sicuro nella memoria di Streamlit
+                # CORREZIONE CRITICA: Forza l'accoppiamento del backend dei token alla richiesta di rete
+                # Questo evita che la libreria interna trovi un valore "None" e fallisca con l'errore .pop
+                if account.connection.token_backend is None:
+                    account.connection.token_backend = account.con.token_backend
+
                 if account.connection.request_token(result_url, state=state, redirect_uri=redirect_uri):
-                    # Puliamo la memoria a successo ottenuto
                     st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
                     st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
                     st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
                     st.rerun()
             except Exception as token_err:
                 st.error(f"Errore durante lo scambio del token. Riprova a cliccare sul link. Dettagli: {token_err}")
-                # Reset di sicurezza in caso di token invalido/scaduto per rigenerarne uno pulito al prossimo giro
                 st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
                 st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
         return False
