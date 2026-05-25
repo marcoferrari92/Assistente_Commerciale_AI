@@ -125,8 +125,18 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
             reconstructed_url += f"&state={parametric_state}"
             
         try:
-            # Popola l'autenticazione nel backend in memoria
+            # Popola l'autenticazione nel backend temporaneo
             if account.connection.request_token(reconstructed_url, state=saved_state, redirect_uri=redirect_uri):
+                # Sincronizziamo il nuovo token generato dentro il session_state globale
+                import os
+                # Accediamo ai parametri corretti dal backend dell'account
+                backend = account.con.token_backend
+                token_full_path = os.path.join(backend.token_path, backend.token_filename)
+                
+                if os.path.exists(token_full_path):
+                    with open(token_full_path, 'r') as f:
+                        st.session_state.o365_token_storage = json.load(f)
+                        
                 st.query_params.clear()
                 st.success("✅ Connessione completata!")
                 st.rerun()
