@@ -83,13 +83,15 @@ def ottieni_account_exchange(scopes):
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Gestisce l'autenticazione evitando i loop infiniti e pulendo l'URL"""
-    
+    """Gestisce l'autenticazione Microsoft AUTOMATICAMENTE leggendo il codice dall'URL
+
+    ed evitando loop infiniti o perdite di dati nel form.
+    """
     # 1. Controlliamo se siamo già autenticati in questa sessione di Streamlit
     if f"ms_auth_success_{chiave_suffisso}" not in st.session_state:
         st.session_state[f"ms_auth_success_{chiave_suffisso}"] = False
 
-    # Se l'account risulta già autenticato internamente, non facciamo nulla
+    # Se l'account risulta già autenticato internamente, restituiamo True
     if account.is_authenticated or st.session_state[f"ms_auth_success_{chiave_suffisso}"]:
         return True
 
@@ -98,45 +100,50 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
     if f"microsoft_state_{chiave_suffisso}" not in st.session_state:
         st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
 
-    # Leggiamo i parametri dall'URL
+    # Leggiamo i parametri inseriti da Microsoft nell'URL della pagina
     parametric_code = st.query_params.get("code")
     parametric_state = st.query_params.get("state")
     
-    # 2. Se il codice è presente, lo elaboriamo IMMEDIATAMENTE
+    # 2. Se il codice è presente nell'URL, lo elaboriamo IMMEDIATAMENTE
     if parametric_code:
-        try:
-            # Acquisiamo il token usando il codice monouso
-            result = account.conclude_flow(
-                st.session_state[f"microsoft_state_{chiave_suffisso}"], 
-                {"code": parametric_code, "state": parametric_state}
-            )
+        saved_state = st.session_state[f"microsoft_state_{chiave_suffisso}"]
+        
+        # Ricostruiamo l'URL di reindirizzamento completo richiesto da O365
+        reconstructed_url = f"{redirect_uri}?code={parametric_code}"
+        if parametric_state:
+            reconstructed_url += f"&state={parametric_state}"
             
-            if result:
-                # Autenticazione riuscita: salviamo lo stato in sessione
-                st.session_state[f"ms_auth_success_{chiave_suffisso}"] = True
-                
-                # CRUCIALE: Puliamo l'URL rimuovendo '?code=...' per evitare il loop al prossimo rerun
-                st.query_params.clear()
-                
-                st.success("Connessione a Microsoft completata con successo!")
-                # Rerunniamo per aggiornare l'interfaccia senza i parametri nell'URL
-                st.rerun()
-                return True
+        try:
+            with st.spinner("🔄 Finalizzazione della connessione con Microsoft..."):
+                # METODO CORRETTO O365: usa account.connection.request_token
+                if account.connection.request_token(reconstructed_url, state=saved_state, redirect_uri=redirect_uri):
+                    st.session_state[f"ms_auth_success_{chiave_suffisso}"] = True
+                    
+                    # CRUCIALE: Puliamo l'URL rimuovendo '?code=...' per evitare il loop al prossimo rerun
+                    st.query_params.clear()
+                    
+                    st.success("✅ Connessione a Microsoft completata con successo!")
+                    st.rerun()
+                    return True
         except Exception as e:
-            # Se il codice è scaduto o già usato, puliamo comunque per non bloccare l'app
+            # Se il codice è scaduto o già usato, puliamo l'URL per non bloccare la UI
             st.query_params.clear()
-            st.error(f"Errore durante l'autenticazione o codice scaduto. Riprova.")
+            st.error(f"Errore durante l'autenticazione automatica (codice scaduto o non valido). Riprova.")
             st.rerun()
 
-    # 3. Se non siamo autenticati e NON c'è un codice nell'URL, mostriamo il pulsante di login
+    # 3. Se non siamo autenticati e NON c'è ancora un codice nell'URL, mostriamo il link di login
     if not st.session_state[f"ms_auth_success_{chiave_suffisso}"]:
-        login_url, state = account.initiate_flow(scopes=scopes, redirect_uri=redirect_uri)
+        # METODO CORRETTO O365: usa account.connection.get_authorization_url
+        url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
         st.session_state[f"microsoft_state_{chiave_suffisso}"] = state
         
+        st.warning("⚠️ L'applicazione richiede l'autorizzazione per accedere al tuo Outlook aziendale.")
+        # Usiamo target="_self" per aprire il login nella STESSA scheda del browser ed evitare duplicati
         st.markdown(
-            f'<a href="{login_url}" target="_self" style="background-color: #0078d4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">🔗 Connetti Calendario Microsoft</a>', 
+            f'<a href="{url}" target="_self" style="background-color: #0078d4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin-top: 10px;">🔗 Connetti Account Microsoft</a>', 
             unsafe_allow_html=True
         )
+        st.caption("Verrai reindirizzato temporaneamente a Microsoft per il login aziendale.")
         return False
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
