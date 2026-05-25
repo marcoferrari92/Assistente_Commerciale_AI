@@ -102,67 +102,64 @@ def ottieni_account_exchange(scopes, chiave_suffisso):
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Esegue lo scambio del token usando l'oggetto persistente salvato in session_state"""
+    """Gestisce l'autenticazione delegata usando un form per bloccare i refresh selvaggi di Streamlit"""
     
-    # Se il file token in /tmp è già valido, esci subito con successo
     if account.is_authenticated:
         return True
         
     redirect_uri = "https://imprendoai.streamlit.app/" 
     
-    # Recuperiamo o generiamo l'URL di login agganciato all'istanza persistente
     if f"ms_url_{chiave_suffisso}" not in st.session_state or st.session_state[f"ms_url_{chiave_suffisso}"] is None:
         url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
         st.session_state[f"ms_url_{chiave_suffisso}"] = url
         st.session_state[f"ms_state_{chiave_suffisso}"] = state
-        # Sincronizziamo lo stato immediatamente sull'oggetto reale
         account.connection.state = state
     
     url = st.session_state[f"ms_url_{chiave_suffisso}"]
     stato_originale = st.session_state[f"ms_state_{chiave_suffisso}"]
     
-    st.warning(f"⚠️ Connessione Microsoft richiesta per l'operazione [{chiave_suffisso.upper()}].")
+    st.warning(f"⚠️ Connessione Microsoft richiesta per [{chiave_suffisso.upper()}].")
     st.markdown(f"[🔗 CLICCA QUI PER EFFETTUARE IL LOGIN SU MICROSOFT]({url})")
     
-    # Campo di testo libero. NON usiamo st.form così intercettiamo l'incollaggio istantaneamente
-    result_url = st.text_input(
-        "Incolla l'URL della pagina bianca e premi INVIO sulla tastiera:", 
-        value="",
-        key=f"input_diretto_url_{chiave_suffisso}"
-    )
+    # --- IL MURO DI CONTENIMENTO PER STREAMLIT ---
+    with st.form(key=f"form_blocco_refresh_{chiave_suffisso}"):
+        result_url = st.text_input(
+            "Incolla QUI l'URL della pagina bianca:", 
+            placeholder="https://imprendoai.streamlit.app/?code=..."
+        )
+        # Il codice si attiva SOLO quando clicchi questo tasto, ignorando i refresh intermedi
+        conferma_auth = st.form_submit_button("🔌 CONFERMA AUTENTICAZIONE DEL TOKEN")
     
-    if result_url:
+    if conferma_auth and result_url:
         from urllib.parse import urlparse, parse_qs
         parsed_url = urlparse(result_url)
         query_params = parse_qs(parsed_url.query)
         code_estratto = query_params.get('code', [None])[0]
         
         if not code_estratto:
-            st.error("❌ L'URL inserito non è completo o non contiene il codice di autorizzazione. Ricopialo tutto.")
+            st.error("❌ L'URL incollato non è completo. Assicurati di averlo copiato tutto (deve contenere '?code=')")
             return False
             
         try:
-            # Ripristiniamo i parametri esatti sulla connessione congelata in session_state
+            # Forziamo i parametri esatti sull'istanza bloccata in sessione
             account.connection.token_backend = account.con.token_backend
             account.connection.state = stato_originale
             
-            # Lanciamo lo scambio
-            st.info("🔄 Validazione delle credenziali sui server Microsoft...")
+            st.info("🔄 Convalida del token con i server Microsoft...")
             scambio_ok = account.connection.request_token(result_url, state=stato_originale, redirect_uri=redirect_uri)
             
             if scambio_ok:
-                st.success("🎉 AUTENTICAZIONE RIUSCITA! Il tuo profilo è stato collegato.")
-                # Resettiamo le variabili temporanee di controllo
+                st.success("🎉 AUTENTICAZIONE REUSCITA CON SUCCESSO!")
                 st.session_state[f"ms_url_{chiave_suffisso}"] = None
                 st.session_state[f"ms_state_{chiave_suffisso}"] = None
                 st.rerun()
                 return True
             else:
-                st.error("❌ Microsoft ha rifiutato il codice. Clicca di nuovo sul link per generarne uno nuovo.")
+                st.error("❌ Microsoft ha rifiutato il codice. Rigenera l'URL cliccando di nuovo sul link.")
                 st.session_state[f"ms_url_{chiave_suffisso}"] = None
                 st.rerun()
         except Exception as e:
-            st.error(f"💥 Errore durante il processo di memorizzazione: {str(e)}")
+            st.error(f"💥 Errore di memorizzazione: {str(e)}")
             st.session_state[f"ms_url_{chiave_suffisso}"] = None
             st.rerun()
             
