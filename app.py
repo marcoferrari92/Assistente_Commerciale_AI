@@ -65,11 +65,12 @@ st.markdown(f"""
 # --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
 
 def ottieni_account_exchange(scopes):
-    """Funzione centralizzata per inizializzare l'account O365"""
+    """Inizializza l'account O365 configurando un file token personalizzato per ogni commerciale"""
     from O365 import Account
+    from O365.utils import FileSystemTokenBackend
     
     if "microsoft_exchange" not in st.secrets:
-        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
+        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets!")
         return None
         
     credentials = (
@@ -78,53 +79,76 @@ def ottieni_account_exchange(scopes):
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # Inizializza l'account (O365 gestisce internamente il salvataggio/lettura del file token)
-    return Account(credentials, tenant_id=tenant_id, scopes=scopes)
+    # Creiamo un file token separato basato sullo username di chi ha fatto il login (es. o365_token_marco.txt)
+    token_path = "/tmp"
+    user_name = st.session_state.user_data["username"] if ("user_data" in st.session_state and st.session_state.user_data) else "global"
+    token_name = f"o365_token_{user_name}.txt"
+    
+    my_backend = FileSystemTokenBackend(token_path=token_path, token_filename=token_name)
+    
+    return Account(credentials, tenant_id=tenant_id, scopes=scopes, token_backend=my_backend)
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Gestisce il flusso visivo di autenticazione salvando lo 'state' in session_state per evitare crash"""
+    """Gestisce l'autenticazione delegata blindando la sessione ed evitando i refresh folli di Streamlit"""
     if not account.is_authenticated:
         redirect_uri = "https://imprendoai.streamlit.app/" 
         
-        # Inizializziamo le chiavi di memoria se non esistono
-        if f"microsoft_state_{chiave_suffisso}" not in st.session_state:
-            st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
-        if f"microsoft_url_{chiave_suffisso}" not in st.session_state:
-            st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
+        if f"ms_url_{chiave_suffisso}" not in st.session_state:
+            st.session_state[f"ms_url_{chiave_suffisso}"] = None
+        if f"ms_state_{chiave_suffisso}" not in st.session_state:
+            st.session_state[f"ms_state_{chiave_suffisso}"] = None
 
-        # Generiamo l'URL di login SOLO se non lo abbiamo già generato prima
-        if not st.session_state[f"microsoft_url_{chiave_suffisso}"]:
+        if not st.session_state[f"ms_url_{chiave_suffisso}"]:
             url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
-            st.session_state[f"microsoft_url_{chiave_suffisso}"] = url
-            st.session_state[f"microsoft_state_{chiave_suffisso}"] = state
+            st.session_state[f"ms_url_{chiave_suffisso}"] = url
+            st.session_state[f"ms_state_{chiave_suffisso}"] = state
         
-        url = st.session_state[f"microsoft_url_{chiave_suffisso}"]
-        state = st.session_state[f"microsoft_state_{chiave_suffisso}"]
+        url = st.session_state[f"ms_url_{chiave_suffisso}"]
+        stato_originale = st.session_state[f"ms_state_{chiave_suffisso}"]
         
-        st.warning("⚠️ L'applicazione non è connessa o ha perso la connessione al tuo Outlook aziendale.")
+        st.warning(f"⚠️ Connessione Microsoft mancante per la sezione: {chiave_suffisso.upper()}")
         st.markdown(f"[🔗 Clicca qui per autorizzare l'applicazione su Microsoft]({url})")
         
-        result_url = st.text_input(
-            "Incolla qui l'URL della pagina su cui sei stato reindirizzato:", 
-            key=f"exchange_auth_url_{chiave_suffisso}"
-        )
-        if result_url:
+        # --- BLOCCO DI SICUREZZA: st.form impedisce il refresh durante l'incollaggio ---
+        with st.form(key=f"form_auth_{chiave_suffisso}"):
+            result_url = st.text_input(
+                "Incolla qui l'URL della pagina bianca di reindirizzamento:", 
+                placeholder="https://imprendoai.streamlit.app/?code=..."
+            )
+            conferma_auth = st.form_submit_button("🔌 CONFERMA AUTENTICAZIONE")
+            
+        if conferma_auth and result_url:
             try:
-                # Usiamo lo 'state' salvato in modo sicuro nella memoria di Streamlit
-                if account.connection.request_token(result_url, state=state, redirect_uri=redirect_uri):
-                    # Puliamo la memoria a successo ottenuto
-                    st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
-                    st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
-                    st.success("✅ Connessione a Microsoft completata con successo! Riprova a salvare.")
+                from urllib.parse import urlparse, parse_qs
+                parsed_url = urlparse(result_url)
+                query_params = parse_qs(parsed_url.query)
+                code_estratto = query_params.get('code', [None])[0]
+                
+                if not code_estratto:
+                    st.error("❌ L'URL incollato non contiene un codice valido.")
+                    return False
+
+                # Forza il backend dei file prima dello scambio
+                if getattr(account.connection, 'token_backend', None) is None:
+                    account.connection.token_backend = account.con.token_backend
+                
+                account.connection.state = stato_originale
+
+                # Effettua lo scambio
+                if account.connection.request_token(result_url, state=stato_originale, redirect_uri=redirect_uri):
+                    st.session_state[f"ms_url_{chiave_suffisso}"] = None
+                    st.session_state[f"ms_state_{chiave_suffisso}"] = None
+                    st.success("✅ Connessione completata! Il token è salvato sul server. Ora puoi salvare.")
                     st.rerun()
-            except Exception as token_err:
-                st.error(f"Errore durante lo scambio del token. Riprova a cliccare sul link. Dettagli: {token_err}")
-                # Reset di sicurezza in caso di token invalido/scaduto per rigenerarne uno pulito al prossimo giro
-                st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
-                st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
+                    return True
+            except Exception as e:
+                st.error(f"Errore nello scambio token: {e}")
+                st.session_state[f"ms_url_{chiave_suffisso}"] = None
+                st.rerun()
         return False
     return True
+
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
     """Esegue la creazione dell'evento supponendo l'account già autenticato"""
