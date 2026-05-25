@@ -710,39 +710,61 @@ if utente_connesso:
         calendario_ok = False
         email_ok = False
         
-        # Definizione degli scope necessari (Calendar per eventi, Mail per invio e salvataggio in inviati)
+        # Definizione degli scope necessari
         scopes_calendario = ['calendars.readwrite']
         scopes_email = ['mail.send', 'mail.readwrite']
         
+        st.info("🔄 Inizio elaborazione salvataggio...")
+        
         # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
         if st.session_state.form_data["salva_su_calendario"]:
+            st.write("📅 Tentativo di sincronizzazione calendario in corso...")
             account_cal = ottieni_account_exchange(scopes_calendario)
-            if account_cal and gestisci_autenticazione_microsoft(account_cal, scopes_calendario, "calendario"):
-                calendario_ok = crea_evento_su_exchange(
-                    account=account_cal,
-                    user_email=utente_connesso["email"],
-                    dati_evento=st.session_state.form_data
-                )
+            
+            if not account_cal:
+                st.error("❌ Impossibile inizializzare l'account del calendario (Account non creato).")
+            else:
+                status_auth_cal = gestisci_autenticazione_microsoft(account_cal, scopes_calendario, "calendario")
+                st.write(f"Stato autenticazione calendario: {'Autenticato' if status_auth_cal else 'NON Autenticato'}")
+                
+                if status_auth_cal:
+                    calendario_ok = crea_evento_su_exchange(
+                        account=account_cal,
+                        user_email=utente_connesso["email"],
+                        dati_evento=st.session_state.form_data
+                    )
+                    st.write(f"Risultato creazione evento: {'SUCCESSO' if calendario_ok else 'FALLITO'}")
             
         # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
         if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
-            with st.spinner("Invio della mail al collega in corso..."):
-                # Salviamo l'email corrente per il banner di notifica
-                destinatario_notifica = st.session_state.email_collega
-                
-                account_mail = ottieni_account_exchange(scopes_email)
-                if account_mail and gestisci_autenticazione_microsoft(account_mail, scopes_email, "email"):
-                    email_ok = invia_email_collega(
-                        account=account_mail,
-                        user_email=utente_connesso["email"],
-                        user_real_name=utente_connesso["nome"], 
-                        email_collega=st.session_state.email_collega,
-                        oggetto_email=st.session_state.oggetto_email, 
-                        dati_evento=st.session_state.form_data,
-                        messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
-                        file_caricati=uploaded_files
-                    )
+            destinatario_notifica = st.session_state.email_collega
+            st.write(f"📧 Preparazione invio e-mail a: {destinatario_notifica}...")
+            
+            account_mail = ottieni_account_exchange(scopes_email)
+            if not account_mail:
+                st.error("❌ Impossibile inizializzare l'account e-mail (Account non creato).")
+            else:
+                with st.spinner("Scambio credenziali e invio della mail in corso..."):
+                    status_auth_mail = gestisci_autenticazione_microsoft(account_mail, scopes_email, "email")
+                    st.write(f"Stato autenticazione e-mail: {'Autenticato' if status_auth_mail else 'NON Autenticato (Richiesto URL o Token)'}")
+                    
+                    if status_auth_mail:
+                        st.write("🚀 Avvio della funzione invia_email_collega...")
+                        email_ok = invia_email_collega(
+                            account=account_mail,
+                            user_email=utente_connesso["email"],
+                            user_real_name=utente_connesso["nome"], 
+                            email_collega=st.session_state.email_collega,
+                            oggetto_email=st.session_state.oggetto_email, 
+                            dati_evento=st.session_state.form_data,
+                            messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
+                            file_caricati=uploaded_files
+                        )
+                        st.write(f"Risposta finale della funzione di invio: {'E-mail partita' if email_ok else 'Errore durante l'esecuzione del codice d'invio'}")
+        else:
+            st.warning("⚠️ L'invio e-mail automatico non è attivo o manca l'indirizzo del collega.")
         
+        # --- ELABORAZIONE DATI FINALI ---
         final_data = st.session_state.form_data.copy()
         if final_data["promemoria"]:
             final_data["promemoria"] = final_data["promemoria"].strftime("%Y-%m-%d")
@@ -761,5 +783,8 @@ if utente_connesso:
             
         if email_ok:
             st.success(f"📧 Email inviata con successo a {destinatario_notifica} e salvata in Posta Inviata!")
+        else:
+            if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
+                st.error("❌ Il database è stato aggiornato, ma la mail NON è stata recapitata. Leggi i log di tracciamento sopra.")
             
-        st.write("Dati inviati:", final_data)
+        st.write("Dati inviati al DB:", final_data)
