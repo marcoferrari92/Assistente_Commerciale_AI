@@ -297,6 +297,16 @@ if utente_connesso:
         st.session_state.user_data = None
         st.rerun()
 
+    # --- CAMBIAMENTO QUI: Autenticazione Preventiva Globale ---
+    # Unifichiamo gli scope per non dover fare due autenticazioni separate
+    scopes_globali = ['calendars.readwrite', 'mail.send', 'mail.readwrite']
+    account_globale = ottieni_account_exchange(scopes_globali)
+    
+    if account_globale:
+        # Se non è autenticato, blocca l'interfaccia principale e mostra il link di sblocco in alto
+        if not gestisci_autenticazione_microsoft(account_globale, scopes_globali, "globale"):
+            st.stop() # Congela il resto dell'interfaccia finché l'utente non inserisce l'URL e preme INVIO
+
     # --- INIZIALIZZAZIONE CLIENT OPENAI ---
     if "openai_key" in st.secrets:
         client = OpenAI(api_key=st.secrets["openai_key"])
@@ -710,58 +720,40 @@ if utente_connesso:
         calendario_ok = False
         email_ok = False
         
-        # Definizione degli scope necessari
-        scopes_calendario = ['calendars.readwrite']
-        scopes_email = ['mail.send', 'mail.readwrite']
-        
         st.info("🔄 Inizio elaborazione salvataggio...")
+        
+        # Recuperiamo l'account globale (che a questo punto è sicuramente autenticato con tutti gli scope)
+        scopes_globali = ['calendars.readwrite', 'mail.send', 'mail.readwrite']
+        account_aziendale = ottieni_account_exchange(scopes_globali)
         
         # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
         if st.session_state.form_data["salva_su_calendario"]:
-            st.write("📅 Tentativo di sincronizzazione calendario in corso...")
-            account_cal = ottieni_account_exchange(scopes_calendario)
-            
-            if not account_cal:
-                st.error("❌ Impossibile inizializzare l'account del calendario (Account non creato).")
-            else:
-                status_auth_cal = gestisci_autenticazione_microsoft(account_cal, scopes_calendario, "calendario")
-                st.write(f"Stato autenticazione calendario: {'Autenticato' if status_auth_cal else 'NON Autenticato'}")
-                
-                if status_auth_cal:
-                    calendario_ok = crea_evento_su_exchange(
-                        account=account_cal,
-                        user_email=utente_connesso["email"],
-                        dati_evento=st.session_state.form_data
-                    )
-                    st.write(f"Risultato creazione evento: {'SUCCESSO' if calendario_ok else 'FALLITO'}")
+            st.write("📅 Inserimento appuntamento su Outlook...")
+            calendario_ok = crea_evento_su_exchange(
+                account=account_aziendale,
+                user_email=utente_connesso["email"],
+                dati_evento=st.session_state.form_data
+            )
+            st.write(f"Risultato creazione evento: {'SUCCESSO' if calendario_ok else 'FALLITO'}")
             
         # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
         if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
             destinatario_notifica = st.session_state.email_collega
-            st.write(f"📧 Preparazione invio e-mail a: {destinatario_notifica}...")
+            st.write(f"📧 Invio e-mail a: {destinatario_notifica} in corso...")
             
-            account_mail = ottieni_account_exchange(scopes_email)
-            if not account_mail:
-                st.error("❌ Impossibile inizializzare l'account e-mail (Account non creato).")
-            else:
-                with st.spinner("Scambio credenziali e invio della mail in corso..."):
-                    status_auth_mail = gestisci_autenticazione_microsoft(account_mail, scopes_email, "email")
-                    st.write(f"Stato autenticazione e-mail: {'Autenticato' if status_auth_mail else 'NON Autenticato (Richiesto URL o Token)'}")
-                    
-                    if status_auth_mail:
-                        st.write("🚀 Avvio della funzione invia_email_collega...")
-                        email_ok = invia_email_collega(
-                            account=account_mail,
-                            user_email=utente_connesso["email"],
-                            user_real_name=utente_connesso["nome"], 
-                            email_collega=st.session_state.email_collega,
-                            oggetto_email=st.session_state.oggetto_email, 
-                            dati_evento=st.session_state.form_data,
-                            messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
-                            file_caricati=uploaded_files
-                        )
-                        testo_esito = "E-mail partita" if email_ok else "Errore durante l esecuzione del codice di invio"
-                        st.write(f"Risposta finale della funzione di invio: {testo_esito}")
+            with st.spinner("Spedizione della mail al collega..."):
+                email_ok = invia_email_collega(
+                    account=account_aziendale,
+                    user_email=utente_connesso["email"],
+                    user_real_name=utente_connesso["nome"], 
+                    email_collega=st.session_state.email_collega,
+                    oggetto_email=st.session_state.oggetto_email, 
+                    dati_evento=st.session_state.form_data,
+                    messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
+                    file_caricati=uploaded_files
+                )
+                testo_esito = "E-mail partita con successo" if email_ok else "Errore durante l esecuzione del codice di invio"
+                st.write(f"Risposta server Microsoft: {testo_esito}")
         else:
             st.warning("⚠️ L'invio e-mail automatico non è attivo o manca l'indirizzo del collega.")
         
@@ -773,7 +765,6 @@ if utente_connesso:
         if final_data["orario_promemoria"]:
             final_data["orario_promemoria"] = final_data["orario_promemoria"].strftime("%H:%M")
             
-        # Resettiamo solo la lista dei campi vuoti rilevati dall'AI
         st.session_state.campi_mancanti = []
         
         # --- BANNER DI CONFERMA STABILI ---
@@ -786,6 +777,6 @@ if utente_connesso:
             st.success(f"📧 Email inviata con successo a {destinatario_notifica} e salvata in Posta Inviata!")
         else:
             if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
-                st.error("❌ Il database è stato aggiornato, ma la mail NON è stata recapitata. Leggi i log di tracciamento sopra.")
+                st.error("❌ Il database è stato aggiornato, ma la mail NON è stata recapitata. Leggi i log sopra.")
             
         st.write("Dati inviati al DB:", final_data)
