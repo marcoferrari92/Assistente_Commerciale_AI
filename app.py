@@ -244,7 +244,7 @@ if utente_connesso:
     account_controllo = ottieni_account_exchange(scopes_necessari)
     
     if account_controllo:
-        # Questa chiamata intercetta anche l'eventuale ritorno da Microsoft nell'URL
+        # Questa chiamata intercetta l'eventuale ritorno da Microsoft nell'URL
         connesso_a_microsoft = gestisci_autenticazione_microsoft(account_controllo, scopes_necessari, "globale")
         
         if connesso_a_microsoft:
@@ -254,10 +254,8 @@ if utente_connesso:
             url, state = account_controllo.connection.get_authorization_url(requested_scopes=scopes_necessari, redirect_uri="https://imprendoai.streamlit.app/")
             st.session_state[f"microsoft_state_globale"] = state
             
-            st.sidebar.markdown(
-                f'<a href="{url}" target="_self" style="background-color: #0078d4; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; font-weight: bold; display: block; text-align: center;">🔗 Connetti Outlook</a>', 
-                unsafe_allow_html=True
-            )
+            # --- SOSTITUISCI IL VECCHIO LINK HTML CON QUESTO COMPONENTE NATIVO ---
+            st.sidebar.link_button("🔗 Connetti Outlook", url, use_container_width=True)
     
     if st.sidebar.button("🚪 Logout"):
         st.session_state.user_data = None
