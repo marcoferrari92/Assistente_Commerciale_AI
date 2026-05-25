@@ -83,68 +83,32 @@ def ottieni_account_exchange(scopes):
 
 
 def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Gestisce l'autenticazione Microsoft AUTOMATICAMENTE leggendo il codice dall'URL
-
-    ed evitando loop infiniti o perdite di dati nel form.
-    """
-    # 1. Controlliamo se siamo già autenticati in questa sessione di Streamlit
-    if f"ms_auth_success_{chiave_suffisso}" not in st.session_state:
-        st.session_state[f"ms_auth_success_{chiave_suffisso}"] = False
-
-    # Se l'account risulta già autenticato internamente, restituiamo True
-    if account.is_authenticated or st.session_state[f"ms_auth_success_{chiave_suffisso}"]:
+    """Verifica l'autenticazione leggendo i parametri dall'URL, senza distruggere la UI."""
+    if account.is_authenticated:
         return True
 
-    redirect_uri = "https://imprendoai.streamlit.app/" 
-    
-    if f"microsoft_state_{chiave_suffisso}" not in st.session_state:
-        st.session_state[f"microsoft_state_{chiave_suffisso}"] = None
-
-    # Leggiamo i parametri inseriti da Microsoft nell'URL della pagina
+    # Intercettiamo il codice se siamo appena tornati da Microsoft
     parametric_code = st.query_params.get("code")
     parametric_state = st.query_params.get("state")
     
-    # 2. Se il codice è presente nell'URL, lo elaboriamo IMMEDIATAMENTE
     if parametric_code:
-        saved_state = st.session_state[f"microsoft_state_{chiave_suffisso}"]
-        
-        # Ricostruiamo l'URL di reindirizzamento completo richiesto da O365
+        redirect_uri = "https://imprendoai.streamlit.app/"
+        saved_state = st.session_state.get(f"microsoft_state_{chiave_suffisso}")
         reconstructed_url = f"{redirect_uri}?code={parametric_code}"
         if parametric_state:
             reconstructed_url += f"&state={parametric_state}"
             
         try:
-            with st.spinner("🔄 Finalizzazione della connessione con Microsoft..."):
-                # METODO CORRETTO O365: usa account.connection.request_token
-                if account.connection.request_token(reconstructed_url, state=saved_state, redirect_uri=redirect_uri):
-                    st.session_state[f"ms_auth_success_{chiave_suffisso}"] = True
-                    
-                    # CRUCIALE: Puliamo l'URL rimuovendo '?code=...' per evitare il loop al prossimo rerun
-                    st.query_params.clear()
-                    
-                    st.success("✅ Connessione a Microsoft completata con successo!")
-                    st.rerun()
-                    return True
-        except Exception as e:
-            # Se il codice è scaduto o già usato, puliamo l'URL per non bloccare la UI
+            if account.connection.request_token(reconstructed_url, state=saved_state, redirect_uri=redirect_uri):
+                st.query_params.clear()
+                st.success("✅ Connessione completata!")
+                st.rerun()
+                return True
+        except:
             st.query_params.clear()
-            st.error(f"Errore durante l'autenticazione automatica (codice scaduto o non valido). Riprova.")
             st.rerun()
-
-    # 3. Se non siamo autenticati e NON c'è ancora un codice nell'URL, mostriamo il link di login
-    if not st.session_state[f"ms_auth_success_{chiave_suffisso}"]:
-        # METODO CORRETTO O365: usa account.connection.get_authorization_url
-        url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
-        st.session_state[f"microsoft_state_{chiave_suffisso}"] = state
-        
-        st.warning("⚠️ L'applicazione richiede l'autorizzazione per accedere al tuo Outlook aziendale.")
-        # Usiamo target="_self" per aprire il login nella STESSA scheda del browser ed evitare duplicati
-        st.markdown(
-            f'<a href="{url}" target="_self" style="background-color: #0078d4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin-top: 10px;">🔗 Connetti Account Microsoft</a>', 
-            unsafe_allow_html=True
-        )
-        st.caption("Verrai reindirizzato temporaneamente a Microsoft per il login aziendale.")
-        return False
+            
+    return account.is_authenticated
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
     """Esegue la creazione dell'evento supponendo l'account già autenticato"""
@@ -262,10 +226,31 @@ def login_commerciale():
 utente_connesso = login_commerciale()
 
 # --- 5. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
+# --- 5. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
 if utente_connesso:
-    # CORREZIONE AGGIUNTIVA: Fallback di sicurezza anche in fase di rendering sidebar
     nome_visualizzato = utente_connesso.get("nome", utente_connesso.get("username", "Utente").capitalize())
     st.sidebar.write(f"👤 Utente: **{nome_visualizzato}**")
+    
+    # --- NUOVO CONTROLLO DI AUTENTICAZIONE PREVENTIVA NELLA SIDEBAR ---
+    scopes_necessari = ['calendars.readwrite', 'mail.send', 'mail.readwrite']
+    # Usiamo un account generico per verificare lo stato globale di O365
+    account_controllo = ottieni_account_exchange(scopes_necessari)
+    
+    if account_controllo:
+        # Questa chiamata intercetta anche l'eventuale ritorno da Microsoft nell'URL
+        connesso_a_microsoft = gestisci_autenticazione_microsoft(account_controllo, scopes_necessari, "globale")
+        
+        if connesso_a_microsoft:
+            st.sidebar.success("🟢 Microsoft Outlook Connesso")
+        else:
+            st.sidebar.error("🔴 Microsoft Outlook Scollegato")
+            url, state = account_controllo.connection.get_authorization_url(requested_scopes=scopes_necessari, redirect_uri="https://imprendoai.streamlit.app/")
+            st.session_state[f"microsoft_state_globale"] = state
+            
+            st.sidebar.markdown(
+                f'<a href="{url}" target="_self" style="background-color: #0078d4; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; font-weight: bold; display: block; text-align: center;">🔗 Connetti Outlook</a>', 
+                unsafe_allow_html=True
+            )
     
     if st.sidebar.button("🚪 Logout"):
         st.session_state.user_data = None
@@ -680,32 +665,31 @@ if utente_connesso:
     if st.button("💾 SALVA EVENTO SUL DATABASE", type="primary", use_container_width=True):
         st.balloons()
         
-        # Variabili di controllo per i messaggi di successo
         calendario_ok = False
         email_ok = False
         
-        # Definizione degli scope necessari (Calendar per eventi, Mail per invio e salvataggio in inviati)
         scopes_calendario = ['calendars.readwrite']
         scopes_email = ['mail.send', 'mail.readwrite']
         
-        # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
+        # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE (Già autenticato!) ---
         if st.session_state.form_data["salva_su_calendario"]:
             account_cal = ottieni_account_exchange(scopes_calendario)
-            if account_cal and gestisci_autenticazione_microsoft(account_cal, scopes_calendario, "calendario"):
+            if account_cal and account_cal.is_authenticated:
                 calendario_ok = crea_evento_su_exchange(
                     account=account_cal,
                     user_email=utente_connesso["email"],
                     dati_evento=st.session_state.form_data
                 )
+            else:
+                st.error("⚠️ Errore: Account Microsoft non autenticato per il calendario. Connettiti dalla barra laterale.")
             
-        # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
+        # --- BLOCCO INVIO EMAIL DI CONDIVISIONE (Già autenticato!) ---
         if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
             with st.spinner("Invio della mail al collega in corso..."):
-                # Salviamo l'email corrente per il banner di notifica
                 destinatario_notifica = st.session_state.email_collega
                 
                 account_mail = ottieni_account_exchange(scopes_email)
-                if account_mail and gestisci_autenticazione_microsoft(account_mail, scopes_email, "email"):
+                if account_mail and account_mail.is_authenticated:
                     email_ok = invia_email_collega(
                         account=account_mail,
                         user_email=utente_connesso["email"],
@@ -716,6 +700,8 @@ if utente_connesso:
                         messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
                         file_caricati=uploaded_files
                     )
+                else:
+                    st.error("⚠️ Errore: Account Microsoft non autenticato per le email. Connettiti dalla barra laterale.")
         
         final_data = st.session_state.form_data.copy()
         if final_data["promemoria"]:
