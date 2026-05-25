@@ -275,8 +275,8 @@ if utente_connesso:
     account_controllo = ottieni_account_exchange(scopes_necessari)
     
     if account_controllo:
-    # Questa chiamata intercetta l'eventuale ritorno da Microsoft nell'URL prima di renderizzare il form
-    connesso_a_microsoft = gestisci_autenticazione_microsoft(account_controllo, scopes_necessari, "globale")
+        # Questa chiamata intercetta l'eventuale ritorno da Microsoft nell'URL prima di renderizzare il form
+        connesso_a_microsoft = gestisci_autenticazione_microsoft(account_controllo, scopes_necessari, "globale")
     
         if connesso_a_microsoft:
             st.sidebar.success("🟢 Microsoft Outlook Connesso")
