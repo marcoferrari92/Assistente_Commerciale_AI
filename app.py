@@ -147,7 +147,6 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
                     account.connection.state = stato_originale
 
                 # 3. Richiediamo il token bypassando la verifica interna automatica (lo passiamo noi)
-                # Usiamo direttamente la libreria requests sottostante o il metodo request_token adattato
                 connessione_riuscita = account.connection.request_token(
                     result_url, 
                     state=stato_originale, 
@@ -160,13 +159,12 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
                     st.session_state[f"ms_state_{chiave_suffisso}"] = None
                     st.success("✅ Connessione completata con successo!")
                     st.rerun()
+                    return True
                 else:
                     st.error("❌ Errore durante la validazione del token. Riprova la procedura.")
                     
             except Exception as e:
-                # Cattura l'errore specifico per mostrare dettagli utili se fallisce ancora
                 st.error(f"Errore tecnico durante lo scambio: {str(e)}")
-                # Se l'errore persiste, resettiamo l'URL per permettere all'utente di rigenerarlo
                 if "pop" in str(e):
                     st.info("🔄 Sessione corrotta. L'URL di login è stato rigenerato, clicca nuovamente sul link sopra.")
                     st.session_state[f"ms_url_{chiave_suffisso}"] = None
