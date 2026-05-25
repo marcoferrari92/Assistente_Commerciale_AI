@@ -94,9 +94,9 @@ def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
         if f"microsoft_url_{chiave_suffisso}" not in st.session_state:
             st.session_state[f"microsoft_url_{chiave_suffisso}"] = None
 
-        # 1. CONTROLLO AUTOMATICO: Verifichiamo se Microsoft ci ha già reindirizzato qui con un codice
-         parametric_code = st.query_params.get("code")
-         parametric_state = st.query_params.get("state")
+        # --- RIGHE CORRETE CON L'INDENTAZIONE A 8 SPAZI ---
+        parametric_code = st.query_params.get("code")
+        parametric_state = st.query_params.get("state")
         
         # Se i parametri sono presenti nell'URL del browser, proviamo ad autenticarci subito
         if parametric_code:
