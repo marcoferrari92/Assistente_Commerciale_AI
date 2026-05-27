@@ -686,13 +686,14 @@ if utente_connesso:
             # --- INTERFACCIA SELEZIONE AVANZATA CLIENTE CRM ---
             suggeriti = st.session_state.get("clienti_suggeriti", [])
             cliente_corrente = st.session_state.form_data["cliente"]
+            cliente_selezionato_completo = None  # Variabile di supporto per l'indirizzo
 
             if suggeriti:
                 st.warning(f"🔍 Verifica Anagrafica per: **'{cliente_corrente}'**")
                 
                 elenco_opzioni = []
                 for c in suggeriti:
-                    label = f"🏢 {c.get('ragione_sociale')} ({c.get('tipo_azienda')}) - 📍 {c.get('indirizzo')}, {c.get('citta')} ({c.get('provincia')})"
+                    label = f"🏢 {c.get('ragione_sociale')} ({c.get('tipo_azienda')})"
                     elenco_opzioni.append(label)
                 
                 elenco_opzioni.append(f"✨ Forza inserimento come Nuovo: '{cliente_corrente}'")
@@ -706,17 +707,35 @@ if utente_connesso:
                     st.session_state.form_data["cliente"] = cliente_corrente
                 else:
                     idx_sel = elenco_opzioni.index(scelta)
-                    cliente_scelto = suggeriti[idx_sel]
-                    st.session_state.form_data["cliente"] = cliente_scelto.get("ragione_sociale")
-                    st.session_state.form_data["id_cliente_crm"] = cliente_scelto.get("id_clienti") 
+                    cliente_selezionato_completo = suggeriti[idx_sel]
+                    st.session_state.form_data["cliente"] = cliente_selezionato_completo.get("ragione_sociale")
+                    st.session_state.form_data["id_cliente_crm"] = cliente_selezionato_completo.get("id_clienti") 
             else:
                 st.session_state.form_data["cliente"] = st.text_input("Cliente", value=cliente_corrente)
+
+            # --- NUOVO BLOCCO: VISUALIZZAZIONE DINAMICA INDIRIZZO CONFERMA ---
+            if cliente_selezionato_completo:
+                ind = cliente_selezionato_completo.get("indirizzo", "")
+                cit = cliente_selezionato_completo.get("citta", "")
+                prv = cliente_selezionato_completo.get("provincia", "")
+                cap = cliente_selezionato_completo.get("cap", "")
+                
+                # Mostra un box di feedback visivo pulito ed elegante per il commerciale
+                st.markdown(
+                    f"""
+                    <div style="background-color: rgba(241, 196, 15, 0.15); padding: 12px; border-left: 4px solid #f1c40f; border-radius: 4px; margin-bottom: 15px;">
+                        <span style="font-size: 13px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; display: block; margin-bottom: 2px;">📍 Sede Associata Rilevata</span>
+                        <span style="font-size: 15px; font-weight: 500; color: #2c3e50;">{ind if ind else 'Indirizzo non presente'} – {cap} {cit} ({prv})</span>
+                    </div>
+                    """, 
+                    unsafe_allow_html=True
+                )
 
             if suggeriti:
                 if st.button("🔄 Pulisci e inserisci a mano", size="small"):
                     st.session_state.clienti_suggeriti = []
                     st.rerun()
-            # --------------------------------------------------
+            # -----------------------------------------------------------------
             st.session_state.form_data["tipologia"] = st.selectbox("Tipologia", ["telefonata", "email", "visita"], index=["telefonata", "email", "visita"].index(st.session_state.form_data["tipologia"]) if st.session_state.form_data["tipologia"] in ["telefonata", "email", "visita"] else 0)
             st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
             st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
