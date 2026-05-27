@@ -296,14 +296,11 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
 def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
     """
     Scarica l'anagrafica completa dall'API ufficiale Imprendo e calcola
-    il match ottimale in base a Ragione Sociale e dati geografici.
+    il match o mostra il totale delle righe ricevute.
     """
     import requests
     import difflib
     
-    if not nome_dettato:
-        return []
-        
     url_api = "https://nethimprendo.imprendosrl.com/imprendo/api/imprendo/clienti/lista"
     
     if "api_imprendo_token" not in st.secrets:
@@ -315,35 +312,32 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
     }
     
     try:
-        # Chiamata GET formale con timeout
         risposta = requests.get(url_api, headers=headers, timeout=15)
         
-        # --- VERIFICA DELLO STATO HTTP DELLA RISPOSTA ---
         if risposta.status_code != 200:
             st.error(f"❌ Errore HTTP Server Net-Imprendo: Codice {risposta.status_code}")
-            st.info(f"Contenuto risposta di errore: {risposta.text}")
+            st.info(f"Contenuto risposta: {risposta.text}")
             return []
             
         json_risposta = risposta.json()
         
-        # Controllo dello Status interno indicato dal server
         if json_risposta.get("Status") != "OK":
             st.error(f"❌ L'API ha risposto con Status KO: {json_risposta.get('Data')}")
             return []
             
-        # Estraiamo la lista reale racchiusa nel campo 'Data'
         lista_clienti_db = json_risposta.get("Data", [])
         
-        # SOTTO-DEBUG: Se la lista del database è vuota a monte, segnalalo
-        if not lista_clienti_db:
-            st.warning("⚠️ Connessione API riuscita, ma il database di Net-Imprendo ha restituito un elenco clienti vuoto.")
-            return []
+        # Salva il totale grezzo nel session_state per visualizzarlo nella diagnostica
+        st.session_state["totale_righe_crm_grezze"] = len(lista_clienti_db)
+        
+        # Se non è stato dettato nessun nome, restituiamo i primi 5 clienti del DB giusto per mostrare i dati
+        if not nome_dettato:
+            return lista_clienti_db[:5]
             
         match_con_punteggio = []
         nota_lower = nota_dettata.lower() if nota_dettata else ""
 
         for cliente in lista_clienti_db:
-            # Gestione flessibile per chiavi maiuscole/minuscole restituite dal server
             ragione_sociale = cliente.get("ragione_sociale") or cliente.get("Ragione_sociale") or ""
             indirizzo = cliente.get("indirizzo") or cliente.get("Indirizzo") or ""
             citta = cliente.get("citta") or cliente.get("Citta") or ""
@@ -351,10 +345,8 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
             if not ragione_sociale:
                 continue
                 
-            # Calcolo somiglianza testuale
             punteggio_nome = difflib.SequenceMatcher(None, nome_dettato.lower(), ragione_sociale.lower()).ratio()
             
-            # Algoritmo Geografico
             punteggio_indirizzo = 0.0
             if citta and citta.lower() in nota_lower:
                 punteggio_indirizzo += 0.35  
@@ -363,7 +355,6 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
                 
             punteggio_totale = punteggio_nome + punteggio_indirizzo
             
-            # Abbassiamo leggermente la soglia a 0.25 per intercettare storpiature forti come "Imprendeo"
             if punteggio_totale > 0.25:
                 match_con_punteggio.append({
                     "cliente_info": cliente,
@@ -373,11 +364,8 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
         match_con_punteggio.sort(key=lambda x: x["punteggio"], reverse=True)
         return [item["cliente_info"] for item in match_con_punteggio[:5]]
 
-    except requests.exceptions.Timeout:
-        st.error("❌ La chiamata all'API di Net-Imprendo è andata in TIMEOUT (il server non ha risposto entro 15 secondi).")
-        return []
     except Exception as e:
-        st.error(f"❌ Errore critico durante l'elaborazione dell'anagrafica clienti: {e}")
+        st.error(f"❌ Errore critico: {e}")
         return []
 
 
