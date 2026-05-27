@@ -172,15 +172,31 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
         message.body = corpo_html
         message.content_type = 'HTML'
 
-        # Gestione allegati nativa, pulita e senza import esterni
+        # Iniezione diretta a basso livello a prova di errore di libreria
         if file_caricati:
+            import base64
+            import mimetypes
+
             for file in file_caricati:
-                # add_file accetta un parametro 'content' (i byte del file) 
-                # e un 'attachment_name' (la stringa del nome del file)
-                message.attachments.add_file(
-                    content=file.getvalue(),
-                    attachment_name=file.name
-                )
+                # 1. Identifichiamo il tipo di file (MIME type)
+                mime_type, _ = mimetypes.guess_type(file.name)
+                if not mime_type:
+                    mime_type = 'application/octet-stream'
+
+                # 2. Convertiamo i byte del file in stringa Base64 (richiesto da Microsoft)
+                file_bytes = file.getvalue()
+                encoded_content = base64.b64encode(file_bytes).decode('utf-8')
+
+                # 3. Costruiamo la struttura JSON esatta richiesta da Microsoft Graph
+                struttura_allegato = {
+                    '@odata.type': '#microsoft.graph.fileAttachment',
+                    'name': file.name,
+                    'contentType': mime_type,
+                    'contentBytes': encoded_content
+                }
+
+                # 4. Forziamo l'inserimento nella lista privata interna della libreria
+                message.attachments._attachments.append(struttura_allegato)
         
         message.send()
         return True
