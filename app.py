@@ -755,6 +755,20 @@ if utente_connesso:
                 disabled=True,
                 placeholder="In attesa della selezione del cliente..."
             )
+            
+            # --- BLOCCO TEMPORANEO DI ISPEZIONE (Aggiungi qui sotto) ---
+            with st.expander("🔍 Stato Diagnostica CRM (Clicca per espandere)"):
+                st.write(f"✍️ **Cliente rilevato dall'audio:** '{cliente_corrente}'")
+                st.write(f"📊 **Numero di aziende ricevute dal CRM:** {len(suggeriti)}")
+                if suggeriti:
+                    st.write("📋 **Primi 3 risultati grezzi dell'API:**")
+                    st.json(suggeriti[:3])
+                else:
+                    st.info("ℹ️ La lista dei suggeriti è vuota. Possibili cause:\n"
+                            "1. L'API di Imprendo ha restituito 0 risultati per questo nome.\n"
+                            "2. Il token nei Secrets è scaduto o errato.\n"
+                            "3. L'algoritmo SequenceMatcher ha scartato i match perché sotto la soglia di somiglianza (0.35).")
+            # -----------------------------------------------------------
 
             if suggeriti:
                 if st.button("🔄 Disassocia e inserisci a mano", size="small"):
