@@ -749,18 +749,16 @@ if utente_connesso:
                 placeholder="In attesa della selezione del cliente..."
             )
             
-            # --- BLOCCO TEMPORANEO DI ISPEZIONE (Aggiungi qui sotto) ---
+            # --- BLOCCO TEMPORANEO DI ISPEZIONE AGGIORNATO ---
             with st.expander("🔍 Stato Diagnostica CRM (Clicca per espandere)"):
+                totale_grezzo = st.session_state.get("totale_righe_crm_grezze", "Mai campionato (Fai un audio)")
                 st.write(f"✍️ **Cliente rilevato dall'audio:** '{cliente_corrente}'")
-                st.write(f"📊 **Numero di aziende ricevute dal CRM:** {len(suggeriti)}")
+                st.metric(label="📦 Righe totali restituite dall'API (Anagrafica Completa)", value=str(totale_grezzo))
+                st.write(f"📊 **Aziende suggerite dopo il filtro:** {len(suggeriti)}")
+                
                 if suggeriti:
-                    st.write("📋 **Primi 3 risultati grezzi dell'API:**")
-                    st.json(suggeriti[:3])
-                else:
-                    st.info("ℹ️ La lista dei suggeriti è vuota. Possibili cause:\n"
-                            "1. L'API di Imprendo ha restituito 0 risultati per questo nome.\n"
-                            "2. Il token nei Secrets è scaduto o errato.\n"
-                            "3. L'algoritmo SequenceMatcher ha scartato i match perché sotto la soglia di somiglianza (0.35).")
+                    st.write("📋 **Primi record estratti (Esempio struttura campi):**")
+                    st.json(suggeriti)
             # -----------------------------------------------------------
 
             if suggeriti:
