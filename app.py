@@ -62,21 +62,14 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE & INVIO EMAIL ---
+# --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE (FLUSSO APPLICATIVO DIRETTO) ---
 
-# --- 3. CONFIGURAZIONE BLINDATA DI MICROSOFT EXCHANGE (SISTEMA ANCORATO) ---
-
-def ottieni_account_exchange(scopes, chiave_suffisso):
-    """Inizializza e blocca l'account dentro lo st.session_state per impedirne la distruzione al rerun"""
+def ottieni_account_exchange():
+    """Inizializza l'account O365 in modalità applicativa (Server-to-Server) senza interazione utente"""
     from O365 import Account
-    from O365.utils import FileSystemTokenBackend
     
-    # Se l'account per questa sezione esiste già in memoria ed è autenticato, restituisci quello
-    if f"ms_account_vivo_{chiave_suffisso}" in st.session_state and st.session_state[f"ms_account_vivo_{chiave_suffisso}"].is_authenticated:
-        return st.session_state[f"ms_account_vivo_{chiave_suffisso}"]
-        
     if "microsoft_exchange" not in st.secrets:
-        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets!")
+        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
         return None
         
     credentials = (
@@ -85,95 +78,14 @@ def ottieni_account_exchange(scopes, chiave_suffisso):
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    token_path = "/tmp"
-    user_name = st.session_state.user_data["username"] if ("user_data" in st.session_state and st.session_state.user_data) else "global"
-    token_name = f"o365_token_{user_name}.txt"
-    
-    my_backend = FileSystemTokenBackend(token_path=token_path, token_filename=token_name)
-    
-    # Creiamo l'istanza di Account
-    account = Account(credentials, tenant_id=tenant_id, scopes=scopes, token_backend=my_backend)
-    
-    # La salviamo subito nella sessione globale prima che Streamlit possa ricaricare lo script
-    if f"ms_account_vivo_{chiave_suffisso}" not in st.session_state:
-        st.session_state[f"ms_account_vivo_{chiave_suffisso}"] = account
-        
-    return st.session_state[f"ms_account_vivo_{chiave_suffisso}"]
+    # auth_flow_type='credentials' indica a O365 di usare il Client Secret senza chiedere login grafici
+    return Account(credentials, auth_flow_type='credentials', tenant_id=tenant_id)
 
-
-def gestisci_autenticazione_microsoft(account, scopes, chiave_suffisso):
-    """Gestisce l'autenticazione isolando solo il codice puro per evitare il fallimento silenzioso di Microsoft"""
-    
-    if account.is_authenticated:
-        return True
-        
-    redirect_uri = "https://imprendoai.streamlit.app/" 
-    
-    if f"ms_url_{chiave_suffisso}" not in st.session_state or st.session_state[f"ms_url_{chiave_suffisso}"] is None:
-        url, state = account.connection.get_authorization_url(requested_scopes=scopes, redirect_uri=redirect_uri)
-        st.session_state[f"ms_url_{chiave_suffisso}"] = url
-        st.session_state[f"ms_state_{chiave_suffisso}"] = state
-        account.connection.state = state
-    
-    url = st.session_state[f"ms_url_{chiave_suffisso}"]
-    stato_originale = st.session_state[f"ms_state_{chiave_suffisso}"]
-    
-    st.warning(f"⚠️ Accesso richiesto per la sezione [{chiave_suffisso.upper()}].")
-    st.markdown(f"[🔗 CLICCA QUI PER APRIRE LA PAGINA DI LOGIN MICROSOFT]({url})")
-    
-    with st.form(key=f"form_soluzione_definitiva_{chiave_suffisso}"):
-        st.write("👉 **Istruzioni:** Dopo il login, guarda l'indirizzo della pagina bianca. Copia tutto quello che c'è dopo `code=` (escludendo eventuali altri parametri come `&state=`).")
-        
-        codice_puro = st.text_input(
-            "Incolla qui SOLO il codice di autorizzazione (o l'intero URL se preferisci):", 
-            placeholder="M.R3_BLA_BLA_BLA..."
-        )
-        conferma_auth = st.form_submit_button("⚡ FORZA ATTIVAZIONE SESSIONE")
-    
-    if conferma_auth and codice_puro:
-        # Se l'utente incolla l'URL intero per abitudine, estraiamo comunque solo il codice pulito
-        if "code=" in codice_puro:
-            try:
-                from urllib.parse import urlparse, parse_qs
-                parsed_url = urlparse(codice_puro)
-                query_params = parse_qs(parsed_url.query)
-                codice_puro = query_params.get('code', [codice_puro])[0]
-            except:
-                pass
-        
-        # Pulizia da spazi bianchi bastardi derivati dal copia-incolla
-        codice_puro = codice_puro.strip()
-        
-        try:
-            account.connection.token_backend = account.con.token_backend
-            account.connection.state = stato_originale
-            
-            # Ricostruiamo l'URL perfetto lato server per non far insospettire Microsoft
-            url_fittizio_perfetto = f"{redirect_uri}?code={codice_puro}&state={stato_originale}"
-            
-            st.info("🔄 Tentativo di forzatura del gettone di accesso...")
-            
-            # Eseguiamo lo scambio con l'URL ripulito a mano
-            scambio_ok = account.connection.request_token(url_fittizio_perfetto, state=stato_originale, redirect_uri=redirect_uri)
-            
-            if scambio_ok:
-                st.success("🎉 FINALMENTE! Autenticazione convalidata dal server.")
-                st.session_state[f"ms_url_{chiave_suffisso}"] = None
-                st.session_state[f"ms_state_{chiave_suffisso}"] = None
-                st.rerun()
-                return True
-            else:
-                # Se fallisce ma non va in crash, stampiamo l'errore reale a schermo invece di stare in silenzio
-                st.error("❌ Il server Microsoft ha rifiutato questo codice specifico. Potrebbe essere scaduto o già utilizzato. Riapri il link e rigeneralo.")
-        except Exception as e:
-            st.error(f"💥 Errore fatale interno: {str(e)}")
-            
-    return False
-    
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
-    """Esegue la creazione dell'evento supponendo l'account già autenticato"""
+    """Esegue la creazione dell'evento sul calendario della specifica risorsa tramite e-mail"""
     try:
+        # resource=user_email mappa direttamente la chiamata sulla casella del commerciale corrente
         schedule = account.schedule(resource=user_email)
         calendar = schedule.get_default_calendar()
         
@@ -189,12 +101,12 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
         new_event.save()
         return True
     except Exception as e:
-        st.error(f"Errore durante l'invio dell'evento a Exchange: {e}")
+        st.error(f"Errore durante l'inserimento dell'evento a calendario per {user_email}: {e}")
         return False
 
 
 def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    """Esegue l'invio dell'email supponendo l'account già autenticato"""
+    """Invia l'email spacciandosi per l'utente corrente sfruttando i permessi applicativi"""
     try:
         mailbox = account.mailbox(resource=user_email)
         message = mailbox.new_message()
@@ -234,7 +146,7 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
         message.send(save_to_sent_items=True)
         return True
     except Exception as e:
-        st.error(f"Errore durante l'invio dell'email: {e}")
+        st.error(f"Errore durante l'invio dell'email da parte di {user_email}: {e}")
         return False
         
 
