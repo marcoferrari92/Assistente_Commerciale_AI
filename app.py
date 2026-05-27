@@ -626,9 +626,25 @@ if utente_connesso:
                     note_dettate = res.get("note", "")
                     if cliente_dettato:
                         with st.spinner("Scansione anagrafiche su Net-Imprendo e incrocio indirizzi..."):
-                            st.session_state.clienti_suggeriti = trova_clienti_simili_avanzato(cliente_dettato, note_dettate)
+                            suggeriti = trova_clienti_simili_avanzato(cliente_dettato, note_dettate)
+                            st.session_state.clienti_suggeriti = suggeriti
+                            
+                            # Se l'API restituisce match, pre-seleziona il primo e salva l'indirizzo
+                            if suggeriti:
+                                primo_match = suggeriti[0]
+                                st.session_state.form_data["cliente"] = primo_match.get("ragione_sociale", "")
+                                st.session_state.form_data["id_cliente_crm"] = primo_match.get("id_clienti")
+                                
+                                ind = primo_match.get("indirizzo", "")
+                                cit = primo_match.get("citta", "")
+                                prv = primo_match.get("provincia", "")
+                                cap = primo_match.get("cap", "")
+                                st.session_state.form_data["indirizzo_completo_crm"] = f"{ind} – {cap} {cit} ({prv})"
+                            else:
+                                st.session_state.form_data["indirizzo_completo_crm"] = ""
                     else:
                         st.session_state.clienti_suggeriti = []
+                        st.session_state.form_data["indirizzo_completo_crm"] = ""
                     
                     for k in st.session_state.form_data.keys():
                         if k in res:
