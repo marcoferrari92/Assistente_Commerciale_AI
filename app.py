@@ -738,8 +738,7 @@ if utente_connesso:
             else:
                 st.session_state.form_data["cliente"] = st.text_input("Cliente", value=cliente_corrente)
 
-            # --- NUOVO CAMPO: INDIRIZZO FISSO E SEMPRE ATTIVO ---
-            # Questo campo è visibile fin dall'avvio della pagina e mostra stabilmente l'indirizzo del CRM
+            # --- CAMPO INDIRIZZO: FISSO, NATIVO E SEMPRE VISIBILE SOTTO CLIENTE ---
             st.text_input(
                 "Indirizzo Sede Rilevato", 
                 value=st.session_state.form_data.get("indirizzo", ""), 
@@ -747,17 +746,14 @@ if utente_connesso:
                 placeholder="In attesa della selezione del cliente..."
             )
             
-            # --- BLOCCO TEMPORANEO DI ISPEZIONE AGGIORNATO ---
+            # --- BLOCCO DIAGNOSTICA CRM ---
             with st.expander("🔍 Stato Diagnostica CRM (Clicca per espandere)"):
                 totale_grezzo = st.session_state.get("totale_righe_crm_grezze", "Mai campionato (Fai un audio)")
                 st.write(f"✍️ **Cliente rilevato dall'audio:** '{cliente_corrente}'")
-                st.metric(label="📦 Righe totali restituite dall'API (Anagrafica Completa)", value=str(totale_grezzo))
+                st.metric(label="📦 Righe totali restituite dall'API", value=str(totale_grezzo))
                 st.write(f"📊 **Aziende suggerite dopo il filtro:** {len(suggeriti)}")
-                
                 if suggeriti:
-                    st.write("📋 **Primi record estratti (Esempio struttura campi):**")
                     st.json(suggeriti)
-            # -----------------------------------------------------------
 
             if suggeriti:
                 if st.button("🔄 Disassocia e inserisci a mano", size="small"):
