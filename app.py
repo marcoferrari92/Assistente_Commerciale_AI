@@ -304,10 +304,8 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
     if not nome_dettato:
         return []
         
-    # --- CONFIGURAZIONE API UFFICIALE NET-IMPRENDO ---
     url_api = "https://nethimprendo.imprendosrl.com/imprendo/api/imprendo/clienti/lista"
     
-    # Recuperiamo il token in modo sicuro dai Secrets di Streamlit
     if "api_imprendo_token" not in st.secrets:
         st.error("⚠️ Token 'api_imprendo_token' mancante nei Secrets di Streamlit!")
         return []
@@ -317,62 +315,69 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
     }
     
     try:
-        # Chiamata GET formale
+        # Chiamata GET formale con timeout
         risposta = requests.get(url_api, headers=headers, timeout=15)
         
-        if risposta.status_code == 200:
-            json_risposta = risposta.json()
+        # --- VERIFICA DELLO STATO HTTP DELLA RISPOSTA ---
+        if risposta.status_code != 200:
+            st.error(f"❌ Errore HTTP Server Net-Imprendo: Codice {risposta.status_code}")
+            st.info(f"Contenuto risposta di errore: {risposta.text}")
+            return []
             
-            # Controllo formale dello Status indicato dal tecnico
-            if json_risposta.get("Status") == "OK":
-                # Estraiamo la lista reale racchiusa nel campo 'Data'
-                lista_clienti_db = json_risposta.get("Data", [])
-            else:
-                st.error(f"❌ L'API ha risposto con Status KO: {json_risposta.get('Data')}")
-                return []
-        else:
-            st.error(f"❌ Errore di connessione API Imprendo (Codice {risposta.status_code})")
+        json_risposta = risposta.json()
+        
+        # Controllo dello Status interno indicato dal server
+        if json_risposta.get("Status") != "OK":
+            st.error(f"❌ L'API ha risposto con Status KO: {json_risposta.get('Data')}")
+            return []
+            
+        # Estraiamo la lista reale racchiusa nel campo 'Data'
+        lista_clienti_db = json_risposta.get("Data", [])
+        
+        # SOTTO-DEBUG: Se la lista del database è vuota a monte, segnalalo
+        if not lista_clienti_db:
+            st.warning("⚠️ Connessione API riuscita, ma il database di Net-Imprendo ha restituito un elenco clienti vuoto.")
             return []
             
         match_con_punteggio = []
         nota_lower = nota_dettata.lower() if nota_dettata else ""
 
-        # --- ALGORITMO DI MATCHING MULTI-CAMPO ---
         for cliente in lista_clienti_db:
-            ragione_sociale = cliente.get("ragione_sociale", "")
-            indirizzo = cliente.get("indirizzo", "")
-            citta = cliente.get("citta", "")
+            # Gestione flessibile per chiavi maiuscole/minuscole restituite dal server
+            ragione_sociale = cliente.get("ragione_sociale") or cliente.get("Ragione_sociale") or ""
+            indirizzo = cliente.get("indirizzo") or cliente.get("Indirizzo") or ""
+            citta = cliente.get("citta") or cliente.get("Citta") or ""
             
             if not ragione_sociale:
                 continue
                 
-            # Calcolo somiglianza testuale sul nome dell'azienda (Valore da 0.0 a 1.0)
+            # Calcolo somiglianza testuale
             punteggio_nome = difflib.SequenceMatcher(None, nome_dettato.lower(), ragione_sociale.lower()).ratio()
             
-            # Algoritmo Geografico basato sull'indirizzo dettato dall'utente
+            # Algoritmo Geografico
             punteggio_indirizzo = 0.0
             if citta and citta.lower() in nota_lower:
-                punteggio_indirizzo += 0.35  # Incremento se l'utente ha nominato la città
+                punteggio_indirizzo += 0.35  
             if indirizzo and indirizzo.lower() in nota_lower:
-                punteggio_indirizzo += 0.55  # Incremento se l'utente ha nominato la via/indirizzo
+                punteggio_indirizzo += 0.55  
                 
             punteggio_totale = punteggio_nome + punteggio_indirizzo
             
-            # Filtriamo i risultati poco coerenti per tenere solo le corrispondenze reali
-            if punteggio_totale > 0.35:
+            # Abbassiamo leggermente la soglia a 0.25 per intercettare storpiature forti come "Imprendeo"
+            if punteggio_totale > 0.25:
                 match_con_punteggio.append({
                     "cliente_info": cliente,
                     "punteggio": punteggio_totale
                 })
                 
-        # Ordina per punteggio decrescente (i più probabili in alto)
         match_con_punteggio.sort(key=lambda x: x["punteggio"], reverse=True)
-        
-        # Restituiamo i primi 5 match ideali trovati
         return [item["cliente_info"] for item in match_con_punteggio[:5]]
 
+    except requests.exceptions.Timeout:
+        st.error("❌ La chiamata all'API di Net-Imprendo è andata in TIMEOUT (il server non ha risposto entro 15 secondi).")
+        return []
     except Exception as e:
-        st.error(f"Errore durante l'elaborazione dell'anagrafica clienti: {e}")
+        st.error(f"❌ Errore critico durante l'elaborazione dell'anagrafica clienti: {e}")
         return []
 
 
