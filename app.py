@@ -94,7 +94,7 @@ def ottieni_account_exchange():
 
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
-    """Esegue la creazione dell'evento verificando l'esistenza del calendario con la sintassi corretta O365"""
+    """Esegue la creazione dell'evento su Outlook impostando Titolo e Corpo personalizzati"""
     try:
         schedule = account.schedule(resource=user_email)
         
@@ -113,9 +113,24 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
         start_datetime = datetime.combine(dati_evento["promemoria"], dati_evento["orario_promemoria"])
         end_datetime = start_datetime + timedelta(minutes=30)
         
+        # Estraiamo i dati per evitare stringhe vuote brutte da vedere
+        cliente = dati_evento.get("cliente", "Cliente non specificato")
+        prossimo_step = dati_evento.get("next_step", "Nessun'azione pianificata")
+        oggetto = dati_evento.get("oggetto", "Nessun oggetto")
+        note_precedenti = dati_evento.get("note", "Nessuna nota inserita")
+        
         new_event = calendar.new_event()
-        new_event.subject = f"🔔 {dati_evento['cliente']} - {dati_evento['oggetto']}"
-        new_event.body = f"Contatto: {dati_evento['contatto']}\nEsito: {dati_evento['esito']}\nProssimo Step: {dati_evento['next_step']}\n\nNote:\n{dati_evento['note']}"
+        
+        # 1. NUOVO TITOLO: Cliente - Prossimo step
+        new_event.subject = f"🔔 {cliente} - {prossimo_step}"
+        
+        # 2. NUOVO CORPO: Pulito, focalizzato su Oggetto e Note evento precedente
+        corpo_evento = (
+            f"🎯 Oggetto: {oggetto}\n"
+            f"📝 Note evento precedente:\n{note_precedenti}"
+        )
+        new_event.body = corpo_evento
+        
         new_event.start = start_datetime
         new_event.end = end_datetime
         
