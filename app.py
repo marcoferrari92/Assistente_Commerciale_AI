@@ -130,16 +130,23 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
 
 
 def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    """Invia l'email chiamando l'API Microsoft con stringhe pulite e nomi dei parametri corretti"""
+    """Invia l'email chiamando l'API Microsoft recuperando il token in modo universale"""
     import requests
     import base64
     import mimetypes
 
     try:
-        # 1. Recuperiamo il token di accesso
-        token_servizio = account.connection.token.get('access_token')
+        # 1. Recupero robusto del token di accesso dalla connessione O365
+        token_servizio = None
+        if hasattr(account.connection, 'session') and account.connection.session:
+            # Estrae il token direttamente dagli header della sessione attiva della libreria
+            auth_header = account.connection.session.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                token_servizio = auth_header.split(' ')[1]
+        
+        # Fallback se non lo trova nella sessione
         if not token_servizio:
-            st.error("❌ Errore: Token di accesso Microsoft non trovato.")
+            st.error("❌ Errore: Impossibile estrarre il Token di accesso Microsoft valido.")
             return False
 
         subject_finale = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
@@ -155,7 +162,7 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
                 "<hr style='border: 0; border-top: 1px solid #eeeeee; margin: 20px 0;'>"
             )
 
-        # 3. Costruzione del corpo HTML tramite lista accoppiata (Zero triple virgolette)
+        # 3. Costruzione del corpo HTML (Zero triple virgolette per l'editor)
         pezzi_html = [
             "<html>",
             "<body>",
