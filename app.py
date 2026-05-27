@@ -295,8 +295,8 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
 
 def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
     """
-    Versione Diagnostica Aggressiva: interroga il server e spara a schermo
-    l'esatto JSON o errore per capire perché non campiona.
+    Scarica l'anagrafica completa dall'API ufficiale Imprendo e calcola
+    il match ottimale gestendo correttamente le chiavi minuscole del server.
     """
     import requests
     import difflib
@@ -312,31 +312,28 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
     }
     
     try:
-        # Forziamo una stampa visiva per essere sicuri che la funzione parta
-        st.info(f"🚀 Chiamata API partita per il cliente: '{nome_dettato}'")
-        
         risposta = requests.get(url_api, headers=headers, timeout=15)
         
-        # Mostriamo subito il codice di stato HTTP
-        if risposta.status_code == 200:
-            st.success(f"🟢 Il server ha risposto con successo! Codice HTTP: {risposta.status_code}")
-        else:
-            st.error(f"🔴 Il server ha rifiutato la chiamata! Codice HTTP: {risposta.status_code}")
-            st.code(risposta.text, language="html")
+        if risposta.status_code != 200:
+            st.error(f"❌ Errore HTTP Server Net-Imprendo: Codice {risposta.status_code}")
             return []
             
         json_risposta = risposta.json()
         
-        # Sbattiamo a schermo l'intera struttura grezza ricevuta dal server
-        with st.expander("👁️ VISUALIZZATORE REALE DATI API (APRI QUI)", expanded=True):
-            st.write("Chiavi del JSON:", list(json_risposta.keys()))
-            st.write("Status interno:", json_risposta.get("Status"))
-            st.write("Contenuto parziale di 'Data':")
-            st.code(str(json_risposta.get("Data"))[:1000], language="json")
+        # Controllo dello status sia in maiuscolo che in minuscolo
+        status_val = json_risposta.get("status") or json_risposta.get("Status")
+        if status_val != "OK":
+            st.error("❌ L'API ha risposto con uno status non valido.")
+            return []
             
-        lista_clienti_db = json_risposta.get("Data", [])
+        # Estrazione della lista con fallback minuscolo/maiuscolo
+        lista_clienti_db = json_risposta.get("data") or json_risposta.get("Data") or []
         st.session_state["totale_righe_crm_grezze"] = len(lista_clienti_db)
         
+        if not lista_clienti_db:
+            return []
+            
+        # Se l'AI non ha estratto un nome dall'audio, mostra i primi 5 record come fallback
         if not nome_dettato:
             return lista_clienti_db[:5]
             
@@ -344,21 +341,34 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
         nota_lower = nota_dettata.lower() if nota_dettata else ""
 
         for cliente in lista_clienti_db:
-            ragione_sociale = cliente.get("ragione_sociale") or cliente.get("Ragione_sociale") or ""
+            # Controllo flessibile sui campi interni del record cliente
+            ragione_sociale = cliente.get("ragione_sociale") or cliente.get("Ragione_sociale") or cliente.get("ragioneSociale") or ""
+            indirizzo = cliente.get("indirizzo") or cliente.get("Indirizzo") or ""
+            citta = cliente.get("citta") or cliente.get("Citta") or ""
+            
             if not ragione_sociale:
                 continue
                 
+            # Calcolo somiglianza testuale sul nome dell'azienda
             punteggio_nome = difflib.SequenceMatcher(None, nome_dettato.lower(), ragione_sociale.lower()).ratio()
-            punteggio_indirizzo = 0.0
             
+            # Algoritmo Geografico basato sulle note dettate
+            punteggio_indirizzo = 0.0
+            if citta and citta.lower() in nota_lower:
+                punteggio_indirizzo += 0.35  
+            if indirizzo and indirizzo.lower() in nota_lower:
+                punteggio_indirizzo += 0.55  
+                
             punteggio_totale = punteggio_nome + punteggio_indirizzo
             
+            # Soglia tollerante per catturare variazioni dell'audio
             if punteggio_totale > 0.25:
                 match_con_punteggio.append({
                     "cliente_info": cliente,
                     "punteggio": punteggio_totale
                 })
                 
+        # Ordina dal punteggio più alto a quello più basso
         match_con_punteggio.sort(key=lambda x: x["punteggio"], reverse=True)
         return [item["cliente_info"] for item in match_con_punteggio[:5]]
         
