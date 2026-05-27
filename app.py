@@ -646,11 +646,7 @@ if utente_connesso:
                         st.session_state.clienti_suggeriti = []
                         st.session_state.form_data["indirizzo"] = ""
                     
-                    # --- INIZIO CICLO DI POPOLAMENTO ALTRI CAMPI ---
-                    for k in st.session_state.form_data.keys():
-                        if k in res:
-                            if res[k] is None:
-                    
+                    # --- CICLO DI POPOLAMENTO ALTRI CAMPI FORM ---
                     for k in st.session_state.form_data.keys():
                         if k in res:
                             if res[k] is None:
