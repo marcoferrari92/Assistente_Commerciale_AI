@@ -119,15 +119,18 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
         oggetto = dati_evento.get("oggetto", "Nessun oggetto")
         note_precedenti = dati_evento.get("note", "Nessuna nota inserita")
         
+        # SOLUZIONE: Facciamo la sostituzione qui fuori, così eliminiamo il backslash dalla f-string
+        note_html = note_precedenti.replace("\n", "<br>")
+        
         new_event = calendar.new_event()
         
         # 1. NUOVO TITOLO: Cliente - Prossimo step
         new_event.subject = f"🔔 {cliente} - {prossimo_step}"
         
-        # 2. NUOVO CORPO HTML: Etichette in grassetto e <br> per i ritorni a capo
+        # 2. NUOVO CORPO HTML: Usiamo la variabile d'appoggio pulita
         corpo_evento_html = (
             f"🎯 <b>Oggetto:</b> {oggetto}<br><br>"
-            f"📝 <b>Note evento precedente:</b><br>{note_precedenti.replace('\n', '<br>')}"
+            f"📝 <b>Note evento precedente:</b><br>{note_html}"
         )
         
         # Assegniamo il testo e forziamo il formato HTML
