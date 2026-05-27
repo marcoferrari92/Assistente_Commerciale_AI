@@ -130,35 +130,47 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
 
 
 def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    """Esegue l'invio dell'email intercettando la mancanza della mailbox"""
+    """Esegue l'invio dell'email in formato HTML minimalista con stringhe formattate a prova di editor"""
     try:
         mailbox = account.mailbox(resource=user_email)
         
-        # Forza un check per vedere se la mailbox risponde o è vuota
         try:
             message = mailbox.new_message()
         except IndexError:
-            st.error(f"❌ Errore [IndexError]: Impossibile creare il messaggio. La casella postale di {user_email} non è accessibile o non esiste con questi permessi.")
+            st.error(f"❌ Errore [IndexError]: Impossibile creare il messaggio. La casella postale di {user_email} non è accessibile.")
             return False
             
         message.to.add(email_collega)
         message.subject = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
         
-        promemoria_str = dati_evento['promemoria'].strftime('%d/%m/%Y') if dati_evento['promemoria'] else 'Non impostato'
-        orario_str = dati_evento['orario_promemoria'].strftime('%H:%M') if dati_evento['orario_promemoria'] else '09:00'
-        
-        corpo_email = ""
+        # Gestiamo la nota a parte per non incasinare le triple virgolette dell'HTML
+        blocco_nota = ""
         if messaggio_personalizzato:
-            corpo_email += f"Nota del collega:\n\"{messaggio_personalizzato}\"\n\n"
-            corpo_email += "-----------------------------------------\n\n"
-            
-        corpo_email += f"Ecco i dettagli dell'evento registrato da {user_real_name}:\n\n"
-        corpo_email += f"🏢 Cliente: {dati_evento['cliente']}\n"
-        corpo_email += f"🎯 Oggetto Evento: {dati_evento['oggetto']}\n"
-        corpo_email += f"📝 Note:\n{dati_evento['note']}\n\n"
-        corpo_email += f"Un saluto,\n{user_real_name}"
+            nota_pulita = messaggio_personalizzato.replace("\n", " ")
+            blocco_nota = (
+                "<div style='margin-bottom: 20px;'>"
+                f"<p style='margin: 0; font-size: 15px; color: #555555;'><strong>Nota di {user_real_name}:</strong></p>"
+                f"<p style='margin: 5px 0 0 0; font-style: italic; color: #2c3e50; background-color: #f8f9fa; padding: 10px; border-left: 3px solid #7f8c8d;'>\"{nota_pulita}\"</p>"
+                "</div>"
+                "<hr style='border: 0; border-top: 1px solid #eeeeee; margin: 20px 0;'>"
+            )
+
+        # Riduciamo l'HTML principale all'osso usando virgolette singole all'interno per i CSS
+        corpo_html = (
+            "<div style='font-family: Arial, sans-serif; color: #333333; max-width: 600px; margin: 0 auto; line-height: 1.6;'>"
+            f"{blocco_nota}"
+            "<p style='margin: 0 0 15px 0; font-size: 15px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;'>Riepilogo Attività</p>"
+            f"<p style='margin: 0 0 10px 0; font-size: 16px;'>🏢 <strong>Cliente:</strong> {dati_evento['cliente']}</p>"
+            f"<p style='margin: 0 0 20px 0; font-size: 16px;'>🎯 <strong>Oggetto Evento:</strong> {dati_evento['oggetto']}</p>"
+            "<div style='margin-top: 20px;'>""<p style='margin: 0 0 8px 0; font-size: 15px; font-weight: bold; color: #2c3e50;'>📝 Note:</p>"
+            f"<div style='background-color: #ffffff; padding: 0 0 0 5px; white-space: pre-line; color: #444444; font-size: 15px;'>{dati_evento['note']}</div>"
+            "</div>"
+            f"<p style='margin-top: 35px; font-size: 15px; color: #333333;'>Un saluto,<br><strong>{user_real_name}</strong></p>"
+            "</div>"
+        )
         
-        message.body = corpo_email
+        message.body = corpo_html
+        message.content_type = 'HTML'
 
         if file_caricati:
             for file in file_caricati:
