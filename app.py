@@ -130,15 +130,41 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
 
 
 def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    """Invia l'email sfruttando il client HTTP interno di O365, ereditando l'autenticazione in automatico"""
+    """Invia l'email via Microsoft Graph richiedendo il token in modo nativo e indipendente da O365"""
+    import requests
     import base64
     import mimetypes
 
     try:
-        # 1. Prepariamo l'oggetto dell'e-mail
+        # 1. Recuperiamo le credenziali Azure direttamente dai Secrets di Streamlit
+        if "microsoft_exchange" not in st.secrets:
+            st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets!")
+            return False
+            
+        client_id = st.secrets["microsoft_exchange"]["client_id"]
+        client_secret = st.secrets["microsoft_exchange"]["client_secret"]
+        tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
+
+        # 2. Richiediamo il Token di accesso direttamente all'endpoint ufficiale di Microsoft
+        url_oauth = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+        payload_oauth = {
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "https://graph.microsoft.com/.default"
+        }
+        
+        risposta_oauth = requests.post(url_oauth, data=payload_oauth)
+        if risposta_oauth.status_code != 200:
+            st.error(f"❌ Errore autenticazione diretta Azure: {risposta_oauth.text}")
+            return False
+            
+        token_servizio = risposta_oauth.json().get("access_token")
+
+        # 3. Prepariamo l'oggetto dell'e-mail
         subject_finale = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
 
-        # 2. Gestione nota commerciale opzionale
+        # 4. Gestione nota commerciale opzionale
         blocco_nota = ""
         if messaggio_personalizzato:
             blocco_nota = (
@@ -149,7 +175,7 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
                 "<hr style='border: 0; border-top: 1px solid #eeeeee; margin: 20px 0;'>"
             )
 
-        # 3. Costruzione del corpo HTML (Senza triple virgolette per l'editor)
+        # 5. Costruzione del corpo HTML (Senza triple virgolette per l'editor)
         pezzi_html = [
             "<html>",
             "<body>",
@@ -169,7 +195,7 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
         ]
         corpo_html = "".join(pezzi_html)
 
-        # 4. Payload JSON per l'API Microsoft Graph
+        # 6. Payload JSON per l'API Microsoft Graph
         email_payload = {
             "message": {
                 "subject": subject_finale,
@@ -189,7 +215,7 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
             "saveToSentItems": "true"
         }
 
-        # 5. Elaborazione allegati in Base64
+        # 7. Elaborazione allegati in Base64
         if file_caricati:
             for file in file_caricati:
                 mime_type, _ = mimetypes.guess_type(file.name)
@@ -206,11 +232,14 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
                 }
                 email_payload["message"]["attachments"].append(allegato_json)
 
-        # 6. LA SVOLTA: Usiamo il client di sessione interno della libreria (ha già i token pronti)
+        # 8. Spedizione diretta a Microsoft Graph
         url_api = f"https://graph.microsoft.com/v1.0/users/{user_email}/sendMail"
-        
-        # account.connection.requests è un oggetto Session di requests pre-autenticato da O365
-        risposta = account.connection.requests.post(url_api, json=email_payload)
+        headers_api = {
+            "Authorization": f"Bearer {token_servizio}",
+            "Content-Type": "application/json"
+        }
+
+        risposta = requests.post(url_api, json=email_payload, headers=headers_api)
 
         if risposta.status_code == 202:
             return True
