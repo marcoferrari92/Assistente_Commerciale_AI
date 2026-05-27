@@ -12,6 +12,8 @@ st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout=
 if 'form_data' not in st.session_state:
     st.session_state.form_data = {
         "cliente": "",
+        "id_cliente_crm": None,       
+        "indirizzo_completo_crm": "",   
         "tipologia": "telefonata",
         "oggetto": "",
         "contatto": "",
