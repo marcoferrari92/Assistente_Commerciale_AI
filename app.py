@@ -143,7 +143,7 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
                     attachment_name=file.name
                 )
         
-        message.send(save_to_sent_items=True)
+        message.send()
         return True
     except Exception as e:
         st.error(f"Errore durante l'invio dell'email da parte di {user_email}: {e}")
