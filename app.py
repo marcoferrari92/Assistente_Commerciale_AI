@@ -42,6 +42,8 @@ if "messaggio_email_personalizzato" not in st.session_state:
     st.session_state.messaggio_email_personalizzato = ""
 if "invia_email_attivo" not in st.session_state:
     st.session_state.invia_email_attivo = False
+if 'clienti_suggeriti' not in st.session_state:
+    st.session_state.clienti_suggeriti = []
 
 
 # --- 2.5 COLORAZIONE DINAMICA DELLO SFONDO (CSS INJECTION) ---
