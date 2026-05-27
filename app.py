@@ -618,6 +618,15 @@ if utente_connesso:
                                 st.session_state.email_collega = lista_colleghi_secrets[idx].get("email", "")
                         except ValueError:
                             pass
+
+                    # --- CHIAMATA API DI NET-IMPRENDO POST-AUDIO ---
+                    cliente_dettato = res.get("cliente", "")
+                    note_dettate = res.get("note", "")
+                    if cliente_dettato:
+                        with st.spinner("Scansione anagrafiche su Net-Imprendo e incrocio indirizzi..."):
+                            st.session_state.clienti_suggeriti = trova_clienti_simili_avanzato(cliente_dettato, note_dettate)
+                    else:
+                        st.session_state.clienti_suggeriti = []
                     
                     for k in st.session_state.form_data.keys():
                         if k in res:
@@ -673,7 +682,41 @@ if utente_connesso:
 
         col_r1_1, col_r1_2 = st.columns(2)
         with col_r1_1:
-            st.session_state.form_data["cliente"] = st.text_input("Cliente", value=st.session_state.form_data["cliente"])
+            
+            # --- INTERFACCIA SELEZIONE AVANZATA CLIENTE CRM ---
+            suggeriti = st.session_state.get("clienti_suggeriti", [])
+            cliente_corrente = st.session_state.form_data["cliente"]
+
+            if suggeriti:
+                st.warning(f"🔍 Verifica Anagrafica per: **'{cliente_corrente}'**")
+                
+                elenco_opzioni = []
+                for c in suggeriti:
+                    label = f"🏢 {c.get('ragione_sociale')} ({c.get('tipo_azienda')}) - 📍 {c.get('indirizzo')}, {c.get('citta')} ({c.get('provincia')})"
+                    elenco_opzioni.append(label)
+                
+                elenco_opzioni.append(f"✨ Forza inserimento come Nuovo: '{cliente_corrente}'")
+                elenco_opzioni.append("✍️ Inserisci manualmente un altro nome...")
+                
+                scelta = st.selectbox("Corrispondenza rilevata nel CRM Net-Imprendo:", elenco_opzioni, index=0)
+                
+                if scelta == "✍️ Inserisci manualmente un altro nome...":
+                    st.session_state.form_data["cliente"] = st.text_input("Ragione Sociale", value="")
+                elif scelta == f"✨ Forza inserimento come Nuovo: '{cliente_corrente}'":
+                    st.session_state.form_data["cliente"] = cliente_corrente
+                else:
+                    idx_sel = elenco_opzioni.index(scelta)
+                    cliente_scelto = suggeriti[idx_sel]
+                    st.session_state.form_data["cliente"] = cliente_scelto.get("ragione_sociale")
+                    st.session_state.form_data["id_cliente_crm"] = cliente_scelto.get("id_clienti") 
+            else:
+                st.session_state.form_data["cliente"] = st.text_input("Cliente", value=cliente_corrente)
+
+            if suggeriti:
+                if st.button("🔄 Pulisci e inserisci a mano", size="small"):
+                    st.session_state.clienti_suggeriti = []
+                    st.rerun()
+            # --------------------------------------------------
             st.session_state.form_data["tipologia"] = st.selectbox("Tipologia", ["telefonata", "email", "visita"], index=["telefonata", "email", "visita"].index(st.session_state.form_data["tipologia"]) if st.session_state.form_data["tipologia"] in ["telefonata", "email", "visita"] else 0)
             st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
             st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
