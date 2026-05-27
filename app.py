@@ -287,7 +287,91 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
     except Exception as e:
         st.error(f"Errore durante l'invio dell'email: {e}")
         return False
+
+
+def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
+    """
+    Scarica l'anagrafica completa dall'API ufficiale Imprendo e calcola
+    il match ottimale in base a Ragione Sociale e dati geografici.
+    """
+    import requests
+    import difflib
+    
+    if not nome_dettato:
+        return []
         
+    # --- CONFIGURAZIONE API UFFICIALE NET-IMPRENDO ---
+    url_api = "https://nethimprendo.imprendosrl.com/imprendo/api/imprendo/clienti/lista"
+    
+    # Recuperiamo il token in modo sicuro dai Secrets di Streamlit
+    if "api_imprendo_token" not in st.secrets:
+        st.error("⚠️ Token 'api_imprendo_token' mancante nei Secrets di Streamlit!")
+        return []
+        
+    headers = {
+        "Authorization": f"Bearer {st.secrets['api_imprendo_token']}"
+    }
+    
+    try:
+        # Chiamata GET formale
+        risposta = requests.get(url_api, headers=headers, timeout=15)
+        
+        if risposta.status_code == 200:
+            json_risposta = risposta.json()
+            
+            # Controllo formale dello Status indicato dal tecnico
+            if json_risposta.get("Status") == "OK":
+                # Estraiamo la lista reale racchiusa nel campo 'Data'
+                lista_clienti_db = json_risposta.get("Data", [])
+            else:
+                st.error(f"❌ L'API ha risposto con Status KO: {json_risposta.get('Data')}")
+                return []
+        else:
+            st.error(f"❌ Errore di connessione API Imprendo (Codice {risposta.status_code})")
+            return []
+            
+        match_con_punteggio = []
+        nota_lower = nota_dettata.lower() if nota_dettata else ""
+
+        # --- ALGORITMO DI MATCHING MULTI-CAMPO ---
+        for cliente in lista_clienti_db:
+            ragione_sociale = cliente.get("ragione_sociale", "")
+            indirizzo = cliente.get("indirizzo", "")
+            citta = cliente.get("citta", "")
+            
+            if not ragione_sociale:
+                continue
+                
+            # Calcolo somiglianza testuale sul nome dell'azienda (Valore da 0.0 a 1.0)
+            punteggio_nome = difflib.SequenceMatcher(None, nome_dettato.lower(), ragione_sociale.lower()).ratio()
+            
+            # Algoritmo Geografico basato sull'indirizzo dettato dall'utente
+            punteggio_indirizzo = 0.0
+            if citta and citta.lower() in nota_lower:
+                punteggio_indirizzo += 0.35  # Incremento se l'utente ha nominato la città
+            if indirizzo and indirizzo.lower() in nota_lower:
+                punteggio_indirizzo += 0.55  # Incremento se l'utente ha nominato la via/indirizzo
+                
+            punteggio_totale = punteggio_nome + punteggio_indirizzo
+            
+            # Filtriamo i risultati poco coerenti per tenere solo le corrispondenze reali
+            if punteggio_totale > 0.35:
+                match_con_punteggio.append({
+                    "cliente_info": cliente,
+                    "punteggio": punteggio_totale
+                })
+                
+        # Ordina per punteggio decrescente (i più probabili in alto)
+        match_con_punteggio.sort(key=lambda x: x["punteggio"], reverse=True)
+        
+        # Restituiamo i primi 5 match ideali trovati
+        return [item["cliente_info"] for item in match_con_punteggio[:5]]
+
+    except Exception as e:
+        st.error(f"Errore durante l'elaborazione dell'anagrafica clienti: {e}")
+        return []
+
+
 
 # --- 4. CONTROLLO ACCESSO MULTI-UTENTE (IMPRENDO MORPHEUS) ---
 def login_commerciale():
