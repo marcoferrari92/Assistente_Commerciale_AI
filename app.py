@@ -130,23 +130,29 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
 
 
 def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    """Invia l'email chiamando l'API Microsoft recuperando il token in modo universale"""
+    """Invia l'email chiamando l'API Microsoft recuperando il token memorizzato nel backend di O365"""
     import requests
     import base64
     import mimetypes
 
     try:
-        # 1. Recupero robusto del token di accesso dalla connessione O365
+        # 1. Recupero diretto dal magazzino dei token interno alla libreria
         token_servizio = None
-        if hasattr(account.connection, 'session') and account.connection.session:
-            # Estrae il token direttamente dagli header della sessione attiva della libreria
-            auth_header = account.connection.session.headers.get('Authorization')
-            if auth_header and auth_header.startswith('Bearer '):
-                token_servizio = auth_header.split(' ')[1]
-        
-        # Fallback se non lo trova nella sessione
+        try:
+            # Nello schema 'credentials', O365 salva il token nel magazzino della connessione
+            token_servizio = account.connection.token_backend.token.get('access_token')
+        except Exception:
+            pass
+            
+        # Fallback alternativo se la struttura del backend cambia in base alla versione
         if not token_servizio:
-            st.error("❌ Errore: Impossibile estrarre il Token di accesso Microsoft valido.")
+            try:
+                token_servizio = account.connection.token.get('access_token')
+            except Exception:
+                pass
+        
+        if not token_servizio:
+            st.error("❌ Errore: Impossibile estrarre il Token di accesso Microsoft valido da O365.")
             return False
 
         subject_finale = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
