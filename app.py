@@ -83,14 +83,19 @@ def ottieni_account_exchange():
 
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
-    """Esegue la creazione dell'evento verificando l'esistenza del calendario"""
+    """Esegue la creazione dell'evento verificando l'esistenza del calendario con la sintassi corretta O365"""
     try:
         schedule = account.schedule(resource=user_email)
         
-        # Tentativo di recupero dei calendari
-        calendars = schedule.get_calendars()
+        # CORREZIONE: In O365 si usa il metodo list_calendars() per ottenere l'elenco
+        try:
+            calendars = schedule.list_calendars()
+        except Exception as auth_err:
+            st.error(f"❌ Errore di autorizzazione Microsoft Graph per {user_email}: {auth_err}. L'app non ha i permessi amministrativi necessari su Azure.")
+            return False
+            
         if not calendars:
-            st.error(f"❌ Errore: Nessun calendario trovato per l'utente {user_email}. Verifica che abbia una licenza Exchange attiva e che i permessi applicativi su Azure abbiano il Consenso dell'Amministratore.")
+            st.error(f"❌ Errore: Nessun calendario trovato per {user_email}. Verifica che l'utente abbia una licenza Exchange attiva e che i permessi applicativi su Azure abbiano il Consenso dell'Amministratore.")
             return False
             
         calendar = schedule.get_default_calendar()
@@ -107,7 +112,7 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
         new_event.save()
         return True
     except IndexError:
-        st.error(f"❌ Errore [IndexError]: Il server Microsoft non ha restituito nessun calendario per {user_email}. Controlla i permessi applicativi su Azure.")
+        st.error(f"❌ Errore [IndexError]: Il server Microsoft ha risposto con un elenco vuoto. Non ci sono calendari accessibili per {user_email}.")
         return False
     except Exception as e:
         st.error(f"Errore durante l'invio dell'evento a Exchange: {e}")
