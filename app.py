@@ -590,7 +590,7 @@ if utente_connesso:
         )
 
         if audio:
-            with st.spinner("Morpheus sta scrivendo i dati..."):
+            with st.spinner("Morpheus sta analizzando l'audio e scrivendo i dati..."):
                 res = analyze_full_report(audio['bytes'])
                 if res:
                     st.session_state.campi_mancanti = res.get("mancanti", [])
@@ -600,11 +600,11 @@ if utente_connesso:
                         st.session_state.messaggio_email_personalizzato = res["nota_collega"]
                         st.session_state.invia_email_attivo = True
                         
-                    # POPOLAMENTO AUTOMATICO OGGETTO EMAIL
+                    # Popolamento automatico oggetto email
                     if "oggetto_email" in res and res["oggetto_email"]:
                         st.session_state.oggetto_email = res["oggetto_email"]
                     
-                    # ASSEGNAZIONE EMAIL USANDO L'ID IDENTIFICATO DALL'AI
+                    # Assegnazione email usando l'ID identificato dall'AI
                     if "id_collega_selezionato" in res and res["id_collega_selezionato"] is not None:
                         try:
                             idx = int(res["id_collega_selezionato"])
@@ -614,30 +614,17 @@ if utente_connesso:
                         except ValueError:
                             pass
 
-                    # --- CHIAMATA API DI NET-IMPRENDO POST-AUDIO ---
-                    cliente_dettato = res.get("cliente", "")
-                    note_dettate = res.get("note", "")
-                    if cliente_dettato:
-                        with st.spinner("Scansione anagrafiche su Net-Imprendo e incrocio indirizzi..."):
-                            suggeriti = trova_clienti_simili_avanzato(cliente_dettato, note_dettate)
-                            st.session_state.clienti_suggeriti = suggeriti
-                            
-                            # Se l'API restituisce match, pre-seleziona il primo e salva l'indirizzo
-                            if suggeriti:
-                                primo_match = suggeriti[0]
-                                st.session_state.form_data["cliente"] = primo_match.get("ragione_sociale", "")
-                                st.session_state.form_data["id_cliente_crm"] = primo_match.get("id_clienti")
-                                
-                                ind = primo_match.get("indirizzo", "")
-                                cit = primo_match.get("citta", "")
-                                prv = primo_match.get("provincia", "")
-                                cap = primo_match.get("cap", "")
-                                st.session_state.form_data["indirizzo"] = f"{ind} – {cap} {cit} ({prv})".strip(" – ()")
-                            else:
-                                st.session_state.form_data["indirizzo"] = ""
-                    else:
-                        st.session_state.clienti_suggeriti = []
-                        st.session_state.form_data["indirizzo"] = ""
+                    # --- FORZATURA CHIAMATA API DI NET-IMPRENDO POST-AUDIO ---
+                    # Estraiamo il cliente pulito o stringa vuota per non rompere l'API
+                    cliente_dettato = res.get("cliente") if res.get("cliente") else ""
+                    note_dettate = res.get("note") if res.get("note") else ""
+                    
+                    # Forziamo il salvataggio immediato nello stato per evitare stringhe vuote fantasma
+                    st.session_state.form_data["cliente"] = cliente_dettato
+                    
+                    # Chiamiamo l'API in ogni caso per contare le righe
+                    suggeriti = trova_clienti_simili_avanzato(cliente_dettato, note_dettate)
+                    st.session_state.clienti_suggeriti = suggeriti
                     
                     # --- CICLO DI POPOLAMENTO ALTRI CAMPI FORM ---
                     for k in st.session_state.form_data.keys():
