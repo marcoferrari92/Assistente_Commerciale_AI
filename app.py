@@ -124,12 +124,15 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
         # 1. NUOVO TITOLO: Cliente - Prossimo step
         new_event.subject = f"🔔 {cliente} - {prossimo_step}"
         
-        # 2. NUOVO CORPO: Pulito, focalizzato su Oggetto e Note evento precedente
-        corpo_evento = (
-            f"🎯 Oggetto: {oggetto}\n"
-            f"📝 Note evento precedente:\n{note_precedenti}"
+        # 2. NUOVO CORPO HTML: Etichette in grassetto e <br> per i ritorni a capo
+        corpo_evento_html = (
+            f"🎯 <b>Oggetto:</b> {oggetto}<br><br>"
+            f"📝 <b>Note evento precedente:</b><br>{note_precedenti.replace('\n', '<br>')}"
         )
-        new_event.body = corpo_evento
+        
+        # Assegniamo il testo e forziamo il formato HTML
+        new_event.body = corpo_evento_html
+        new_event.content_type = 'HTML'  
         
         new_event.start = start_datetime
         new_event.end = end_datetime
