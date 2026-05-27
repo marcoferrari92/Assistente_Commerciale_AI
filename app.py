@@ -65,7 +65,7 @@ st.markdown(f"""
 # --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE (FLUSSO APPLICATIVO DIRETTO) ---
 
 def ottieni_account_exchange():
-    """Inizializza l'account O365 in modalità applicativa (Server-to-Server) senza interazione utente"""
+    """Inizializza l'account O365 in modalità applicativa e forza il recupero del Token di sblocco"""
     from O365 import Account
     
     if "microsoft_exchange" not in st.secrets:
@@ -78,8 +78,17 @@ def ottieni_account_exchange():
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # auth_flow_type='credentials' indica a O365 di usare il Client Secret senza chiedere login grafici
-    return Account(credentials, auth_flow_type='credentials', tenant_id=tenant_id)
+    # 1. Creiamo l'oggetto account con il flusso applicativo (Client Credentials)
+    account = Account(credentials, auth_flow_type='credentials', tenant_id=tenant_id)
+    
+    # 2. LA SVOLTA: Forza la libreria a bussare a Microsoft e prendersi il gettone di accesso ora
+    try:
+        # Questo metodo fa la stretta di mano invisibile M2M lato server
+        account.connection.get_token_with_client_credentials()
+        return account
+    except Exception as token_err:
+        st.error(f"❌ Impossibile ottenere il token applicativo da Azure: {token_err}. Controlla che Client ID, Secret e Tenant ID nei Secrets siano corretti al millimetro.")
+        return None
 
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
