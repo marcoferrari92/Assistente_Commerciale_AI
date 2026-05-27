@@ -129,80 +129,104 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
         return False
 
 
-def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    """Esegue l'invio dell'email in formato HTML minimalista con stringhe formattate a prova di editor"""
+def invia_email_collega(account, user_email, user_real_name, email_collega, objeto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
+    """Invia l'email chiamando l'API Microsoft con stringhe pulite a prova di errore di colorazione dell'editor"""
+    import requests
+    import base64
+    import mimetypes
+
     try:
-        mailbox = account.mailbox(resource=user_email)
-        
-        try:
-            message = mailbox.new_message()
-        except IndexError:
-            st.error(f"❌ Errore [IndexError]: Impossibile creare il messaggio. La casella postale di {user_email} non è accessibile.")
+        # 1. Recuperiamo il token di accesso
+        token_servizio = account.connection.token.get('access_token')
+        if not token_servizio:
+            st.error("❌ Errore: Token di accesso Microsoft non trovato.")
             return False
-            
-        message.to.add(email_collega)
-        message.subject = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
-        
-        # Gestiamo la nota a parte per non incasinare le triple virgolette dell'HTML
+
+        subject_finale = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
+
+        # 2. Gestione nota commerciale opzionale
         blocco_nota = ""
         if messaggio_personalizzato:
-            nota_pulita = messaggio_personalizzato.replace("\n", " ")
             blocco_nota = (
-                "<div style='margin-bottom: 20px;'>"
+                "<div style='margin-bottom: 20px; padding: 10px; background-color: #f8f9fa; border-left: 3px solid #7f8c8d;'>"
                 f"<p style='margin: 0; font-size: 15px; color: #555555;'><strong>Nota di {user_real_name}:</strong></p>"
-                f"<p style='margin: 5px 0 0 0; font-style: italic; color: #2c3e50; background-color: #f8f9fa; padding: 10px; border-left: 3px solid #7f8c8d;'>\"{nota_pulita}\"</p>"
+                f"<p style='margin: 5px 0 0 0; font-style: italic; color: #2c3e50;'>\"{messaggio_personalizzato}\"</p>"
                 "</div>"
                 "<hr style='border: 0; border-top: 1px solid #eeeeee; margin: 20px 0;'>"
             )
 
-        # Riduciamo l'HTML principale all'osso usando virgolette singole all'interno per i CSS
-        corpo_html = (
-            "<div style='font-family: Arial, sans-serif; color: #333333; max-width: 600px; margin: 0 auto; line-height: 1.6;'>"
-            f"{blocco_nota}"
-            "<p style='margin: 0 0 15px 0; font-size: 15px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;'>Riepilogo Attività</p>"
-            f"<p style='margin: 0 0 10px 0; font-size: 16px;'>🏢 <strong>Cliente:</strong> {dati_evento['cliente']}</p>"
-            f"<p style='margin: 0 0 20px 0; font-size: 16px;'>🎯 <strong>Oggetto Evento:</strong> {dati_evento['oggetto']}</p>"
-            "<div style='margin-top: 20px;'>""<p style='margin: 0 0 8px 0; font-size: 15px; font-weight: bold; color: #2c3e50;'>📝 Note:</p>"
-            f"<div style='background-color: #ffffff; padding: 0 0 0 5px; white-space: pre-line; color: #444444; font-size: 15px;'>{dati_evento['note']}</div>"
-            "</div>"
-            f"<p style='margin-top: 35px; font-size: 15px; color: #333333;'>Un saluto,<br><strong>{user_real_name}</strong></p>"
-            "</div>"
-        )
-        
-        message.body = corpo_html
-        message.content_type = 'HTML'
+        # 3. Costruzione del corpo HTML tramite lista accoppiata (Zero triple virgolette)
+        pezzi_html = [
+            "<html>",
+            "<body>",
+            "<div style='font-family: Arial, sans-serif; color: #333333; max-width: 600px; margin: 0 auto; line-height: 1.6;'>",
+            f"{blocco_nota}",
+            "<p style='margin: 0 0 15px 0; font-size: 15px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;'>Riepilogo Attività</p>",
+            f"<p style='margin: 0 0 10px 0; font-size: 16px;'>🏢 <strong>Cliente:</strong> {dati_evento['cliente']}</p>",
+            f"<p style='margin: 0 0 20px 0; font-size: 16px;'>🎯 <strong>Oggetto Evento:</strong> {dati_evento['oggetto']}</p>",
+            "<div style='margin-top: 20px;'>",
+            "<p style='margin: 0 0 8px 0; font-size: 15px; font-weight: bold; color: #2c3e50;'>📝 Note:</p>",
+            f"<div style='white-space: pre-line; color: #444444; font-size: 15px;'>{dati_evento['note']}</div>",
+            "</div>",
+            f"<p style='margin-top: 35px; font-size: 15px; color: #333333;'>Un saluto,<br><strong>{user_real_name}</strong></p>",
+            "</div>",
+            "</body>",
+            "</html>"
+        ]
+        corpo_html = "".join(pezzi_html)
 
-        # Iniezione diretta a basso livello a prova di errore di libreria
+        # 4. Payload JSON per l'API
+        email_payload = {
+            "message": {
+                "subject": subject_finale,
+                "body": {
+                    "contentType": "HTML",
+                    "content": corpo_html
+                },
+                "toRecipients": [
+                    {
+                        "emailAddress": {
+                            "address": email_collega
+                        }
+                    }
+                ],
+                "attachments": []
+            },
+            "saveToSentItems": "true"
+        }
+
+        # 5. Elaborazione allegati
         if file_caricati:
-            import base64
-            import mimetypes
-
             for file in file_caricati:
-                # 1. Identifichiamo il tipo di file (MIME type)
                 mime_type, _ = mimetypes.guess_type(file.name)
                 if not mime_type:
                     mime_type = 'application/octet-stream'
 
-                # 2. Convertiamo i byte del file in stringa Base64 (richiesto da Microsoft)
-                file_bytes = file.getvalue()
-                encoded_content = base64.b64encode(file_bytes).decode('utf-8')
-
-                # 3. Costruiamo la struttura JSON esatta richiesta da Microsoft Graph
-                struttura_allegato = {
-                    '@odata.type': '#microsoft.graph.fileAttachment',
-                    'name': file.name,
-                    'contentType': mime_type,
-                    'contentBytes': encoded_content
+                encoded_content = base64.b64encode(file.getvalue()).decode('utf-8')
+                
+                allegato_json = {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": file.name,
+                    "contentType": mime_type,
+                    "contentBytes": encoded_content
                 }
+                email_payload["message"]["attachments"].append(allegato_json)
 
-                # 4. Forziamo l'inserimento nella lista privata interna della libreria
-                message.attachments._attachments.append(struttura_allegato)
-        
-        message.send()
-        return True
-    except IndexError:
-        st.error(f"❌ Errore [IndexError]: Microsoft ha risposto con una lista vuota per la mailbox di {user_email}.")
-        return False
+        # 6. Chiamata HTTP
+        url_api = f"https://graph.microsoft.com/v1.0/users/{user_email}/sendMail"
+        headers_api = {
+            "Authorization": f"Bearer {token_servizio}",
+            "Content-Type": "application/json"
+        }
+
+        risposta = requests.post(url_api, json=email_payload, headers=headers_api)
+
+        if risposta.status_code == 202:
+            return True
+        else:
+            st.error(f"❌ Errore API Microsoft ({risposta.status_code}): {risposta.text}")
+            return False
+
     except Exception as e:
         st.error(f"Errore durante l'invio dell'email: {e}")
         return False
