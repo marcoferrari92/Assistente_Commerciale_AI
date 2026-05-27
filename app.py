@@ -617,34 +617,28 @@ if utente_connesso:
     if st.button("💾 SALVA EVENTO SUL DATABASE", type="primary", use_container_width=True):
         st.balloons()
         
-        # Variabili di controllo per i messaggi di successo
         calendario_ok = False
         email_ok = False
         
-        # Definizione degli scope necessari (Calendar per eventi, Mail per invio e salvataggio in inviati)
-        scopes_calendario = ['calendars.readwrite']
-        scopes_email = ['mail.send', 'mail.readwrite']
+        # Inizializzazione istantanea dell'account token tramite credenziali dei Secrets
+        account_aziendale = ottieni_account_exchange()
         
-        # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
-        if st.session_state.form_data["salva_su_calendario"]:
-            account_cal = ottieni_account_exchange(scopes_calendario)
-            if account_cal and gestisci_autenticazione_microsoft(account_cal, scopes_calendario, "calendario"):
-                calendario_ok = crea_evento_su_exchange(
-                    account=account_cal,
-                    user_email=utente_connesso["email"],
-                    dati_evento=st.session_state.form_data
-                )
-            
-        # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
-        if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
-            with st.spinner("Invio della mail al collega in corso..."):
-                # Salviamo l'email corrente per il banner di notifica
+        if account_aziendale:
+            # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
+            if st.session_state.form_data["salva_su_calendario"]:
+                with st.spinner("Sincronizzazione appuntamento su Outlook in corso..."):
+                    calendario_ok = crea_evento_su_exchange(
+                        account=account_aziendale,
+                        user_email=utente_connesso["email"],
+                        dati_evento=st.session_state.form_data
+                    )
+                    
+            # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
+            if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
                 destinatario_notifica = st.session_state.email_collega
-                
-                account_mail = ottieni_account_exchange(scopes_email, "email")
-                if account_mail and gestisci_autenticazione_microsoft(account_mail, scopes_email, "email"):
+                with st.spinner(f"Invio riepilogo email a {destinatario_notifica}..."):
                     email_ok = invia_email_collega(
-                        account=account_mail,
+                        account=account_aziendale,
                         user_email=utente_connesso["email"],
                         user_real_name=utente_connesso["nome"], 
                         email_collega=st.session_state.email_collega,
@@ -653,7 +647,10 @@ if utente_connesso:
                         messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
                         file_caricati=uploaded_files
                     )
-        
+        else:
+            st.error("❌ Impossibile stabilire una connessione sicura con l'infrastruttura Microsoft Exchange.")
+
+        # --- ELABORAZIONE DATI FINALI ---
         final_data = st.session_state.form_data.copy()
         if final_data["promemoria"]:
             final_data["promemoria"] = final_data["promemoria"].strftime("%Y-%m-%d")
@@ -661,16 +658,21 @@ if utente_connesso:
         if final_data["orario_promemoria"]:
             final_data["orario_promemoria"] = final_data["orario_promemoria"].strftime("%H:%M")
             
-        # Resettiamo solo la lista dei campi vuoti rilevati dall'AI
         st.session_state.campi_mancanti = []
         
         # --- BANNER DI CONFERMA STABILI ---
         st.success("✅ Evento registrato correttamente nel database aziendale!")
         
-        if st.session_state.form_data["salva_su_calendario"] and calendario_ok:
-            st.success("📅 Appuntamento inserito nel tuo calendario di Outlook!")
+        if st.session_state.form_data["salva_su_calendario"]:
+            if calendario_ok:
+                st.success("📅 Appuntamento inserito nel tuo calendario di Outlook!")
+            else:
+                st.error("❌ Sincronizzazione calendario fallita per un problema di autorizzazione.")
             
-        if email_ok:
-            st.success(f"📧 Email inviata con successo a {destinatario_notifica} e salvata in Posta Inviata!")
+        if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
+            if email_ok:
+                st.success(f"📧 Email inviata con successo a {destinatario_notifica} e registrata nella posta inviata!")
+            else:
+                st.error("❌ Spedizione e-mail fallita. Verifica le restrizioni sul Tenant di Azure.")
             
         st.write("Dati inviati:", final_data)
