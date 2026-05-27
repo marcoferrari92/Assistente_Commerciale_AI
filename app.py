@@ -366,6 +366,50 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
         st.error(f"💥 Errore di rete o crash interno alla funzione API: {e}")
         return []
 
+# =====================================================================
+# 🔥 ISPEZIONE FORZATA DI EMERGENZA: COSA RESTITUISCE DAVVERO L'API? 🔥
+# =====================================================================
+import requests
+st.write("## 🛠️ Debug Diretto Endpoint Net-Imprendo")
+
+if "api_imprendo_token" not in st.secrets:
+    st.error("Chiave 'api_imprendo_token' non trovata nei Secrets.")
+else:
+    url_test = "https://nethimprendo.imprendosrl.com/imprendo/api/imprendo/clienti/lista"
+    headers_test = {"Authorization": f"Bearer {st.secrets['api_imprendo_token']}"}
+    
+    try:
+        req_test = requests.get(url_test, headers=headers_test, timeout=10)
+        st.write(f"📡 **Codice di risposta del server (HTTP):** {req_test.status_code}")
+        
+        if req_test.status_code == 200:
+            json_grezzo = req_test.json()
+            st.success("🟢 Risposta decodificata con successo!")
+            st.write("**Chiavi di primo livello nel JSON:**", list(json_grezzo.keys()))
+            st.write("**Valore della chiave 'Status':**", json_grezzo.get("Status"))
+            
+            if "Data" in json_grezzo:
+                dati_interni = json_grezzo["Data"]
+                st.write(f"📦 **Tipo di dato dentro 'Data':** {type(dati_interni)}")
+                if isinstance(dati_interni, list):
+                    st.write(f"📊 **Numero totale di record nel database:** {len(dati_interni)}")
+                    if len(dati_interni) > 0:
+                        st.write("📋 **Struttura del primo record (Chiavi e Valori di esempio):**")
+                        st.json(dati_interni[0])
+                else:
+                    st.warning("Il campo 'Data' non è una lista. Contenuto:")
+                    st.write(dati_interni)
+            else:
+                st.error("Manca la chiave 'Data' nella risposta del server. Ecco il JSON completo:")
+                st.json(json_grezzo)
+        else:
+            st.error(f"Il server ha rifiutato la richiesta. Testo di errore:")
+            st.code(req_test.text)
+            
+    except Exception as e_test:
+        st.error(f"Impossibile contattare l'URL o decodificare la risposta: {e_test}")
+st.divider()
+# =====================================================================
 
 
 # --- 4. CONTROLLO ACCESSO MULTI-UTENTE (IMPRENDO MORPHEUS) ---
