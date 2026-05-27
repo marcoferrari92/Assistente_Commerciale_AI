@@ -129,8 +129,8 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
         return False
 
 
-def invia_email_collega(account, user_email, user_real_name, email_collega, objeto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    """Invia l'email chiamando l'API Microsoft con stringhe pulite a prova di errore di colorazione dell'editor"""
+def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
+    """Invia l'email chiamando l'API Microsoft con stringhe pulite e nomi dei parametri corretti"""
     import requests
     import base64
     import mimetypes
