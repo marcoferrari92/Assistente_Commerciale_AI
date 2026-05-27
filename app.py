@@ -83,10 +83,16 @@ def ottieni_account_exchange():
 
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
-    """Esegue la creazione dell'evento sul calendario della specifica risorsa tramite e-mail"""
+    """Esegue la creazione dell'evento verificando l'esistenza del calendario"""
     try:
-        # resource=user_email mappa direttamente la chiamata sulla casella del commerciale corrente
         schedule = account.schedule(resource=user_email)
+        
+        # Tentativo di recupero dei calendari
+        calendars = schedule.get_calendars()
+        if not calendars:
+            st.error(f"❌ Errore: Nessun calendario trovato per l'utente {user_email}. Verifica che abbia una licenza Exchange attiva e che i permessi applicativi su Azure abbiano il Consenso dell'Amministratore.")
+            return False
+            
         calendar = schedule.get_default_calendar()
         
         start_datetime = datetime.combine(dati_evento["promemoria"], dati_evento["orario_promemoria"])
@@ -100,17 +106,26 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
         
         new_event.save()
         return True
+    except IndexError:
+        st.error(f"❌ Errore [IndexError]: Il server Microsoft non ha restituito nessun calendario per {user_email}. Controlla i permessi applicativi su Azure.")
+        return False
     except Exception as e:
-        st.error(f"Errore durante l'inserimento dell'evento a calendario per {user_email}: {e}")
+        st.error(f"Errore durante l'invio dell'evento a Exchange: {e}")
         return False
 
 
 def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
-    """Invia l'email spacciandosi per l'utente corrente sfruttando i permessi applicativi"""
+    """Esegue l'invio dell'email intercettando la mancanza della mailbox"""
     try:
         mailbox = account.mailbox(resource=user_email)
-        message = mailbox.new_message()
         
+        # Forza un check per vedere se la mailbox risponde o è vuota
+        try:
+            message = mailbox.new_message()
+        except IndexError:
+            st.error(f"❌ Errore [IndexError]: Impossibile creare il messaggio. La casella postale di {user_email} non è accessibile o non esiste con questi permessi.")
+            return False
+            
         message.to.add(email_collega)
         message.subject = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
         
@@ -145,8 +160,11 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
         
         message.send()
         return True
+    except IndexError:
+        st.error(f"❌ Errore [IndexError]: Microsoft ha risposto con una lista vuota per la mailbox di {user_email}.")
+        return False
     except Exception as e:
-        st.error(f"Errore durante l'invio dell'email da parte di {user_email}: {e}")
+        st.error(f"Errore durante l'invio dell'email: {e}")
         return False
         
 
