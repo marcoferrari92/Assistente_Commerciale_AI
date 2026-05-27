@@ -81,9 +81,8 @@ def ottieni_account_exchange():
     # 1. Inizializziamo l'account dichiarando il flusso di credenziali
     account = Account(credentials, auth_flow_type='credentials', tenant_id=tenant_id)
     
-    # 2. LA SINTASSI CORRETTA: Richiediamo il token ad Azure tramite il metodo ufficiale
+    # 2. Richiediamo il token ad Azure tramite il metodo ufficiale
     try:
-        # authenticate() per le 'credentials' fa tutto in background lato server senza url o login grafici
         if account.authenticate():
             return account
         else:
@@ -99,7 +98,6 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
     try:
         schedule = account.schedule(resource=user_email)
         
-        # CORREZIONE: In O365 si usa il metodo list_calendars() per ottenere l'elenco
         try:
             calendars = schedule.list_calendars()
         except Exception as auth_err:
@@ -156,14 +154,8 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
             
         corpo_email += f"Ecco i dettagli dell'evento registrato da {user_real_name}:\n\n"
         corpo_email += f"🏢 Cliente: {dati_evento['cliente']}\n"
-        corpo_email += f"📞 Tipologia: {dati_evento['tipologia'].capitalize()}\n"
         corpo_email += f"🎯 Oggetto Evento: {dati_evento['oggetto']}\n"
-        corpo_email += f"👤 Contatto: {dati_evento['contatto']}\n"
-        corpo_email += f"🎭 Vibes: {dati_evento['vibes']}\n"
-        corpo_email += f"📊 Esito Concreto: {dati_evento['esito']}\n\n"
         corpo_email += f"📝 Note:\n{dati_evento['note']}\n\n"
-        corpo_email += f"🚀 Prossimo Step: {dati_evento['next_step']}\n"
-        corpo_email += f"🔔 Promemoria Calendario: {promemoria_str} alle ore {orario_str}\n\n"
         corpo_email += f"Un saluto,\n{user_real_name}"
         
         message.body = corpo_email
