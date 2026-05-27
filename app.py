@@ -174,10 +174,10 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
 
         if file_caricati:
             for file in file_caricati:
-                # CORREZIONE: Passiamo i dati senza i costrutti 'attachment=' e 'attachment_name=' che fanno crashare la libreria
-                message.attachments.add(
-                    (file.name, file.getvalue())
-                )
+                # Usiamo il gestore nativo degli allegati della libreria O365
+                attachment = message.attachments.new()
+                attachment.name = file.name
+                attachment.content = file.getvalue()  # Passa i byte puri
         
         message.send()
         return True
