@@ -65,7 +65,7 @@ st.markdown(f"""
 # --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE (FLUSSO APPLICATIVO DIRETTO) ---
 
 def ottieni_account_exchange():
-    """Inizializza l'account O365 in modalità applicativa e forza il recupero del Token di sblocco"""
+    """Inizializza l'account O365 in modalità applicativa ed esegue l'autenticazione nativa silenziosa"""
     from O365 import Account
     
     if "microsoft_exchange" not in st.secrets:
@@ -78,16 +78,19 @@ def ottieni_account_exchange():
     )
     tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    # 1. Creiamo l'oggetto account con il flusso applicativo (Client Credentials)
+    # 1. Inizializziamo l'account dichiarando il flusso di credenziali
     account = Account(credentials, auth_flow_type='credentials', tenant_id=tenant_id)
     
-    # 2. LA SVOLTA: Forza la libreria a bussare a Microsoft e prendersi il gettone di accesso ora
+    # 2. LA SINTASSI CORRETTA: Richiediamo il token ad Azure tramite il metodo ufficiale
     try:
-        # Questo metodo fa la stretta di mano invisibile M2M lato server
-        account.connection.get_token_with_client_credentials()
-        return account
-    except Exception as token_err:
-        st.error(f"❌ Impossibile ottenere il token applicativo da Azure: {token_err}. Controlla che Client ID, Secret e Tenant ID nei Secrets siano corretti al millimetro.")
+        # authenticate() per le 'credentials' fa tutto in background lato server senza url o login grafici
+        if account.authenticate():
+            return account
+        else:
+            st.error("❌ Autenticazione applicativa fallita. Azure ha rifiutato le credenziali.")
+            return None
+    except Exception as auth_err:
+        st.error(f"❌ Errore durante la stretta di mano con Azure: {auth_err}. Controlla i valori inseriti nei Secrets.")
         return None
 
 
