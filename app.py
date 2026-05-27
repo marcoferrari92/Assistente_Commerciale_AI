@@ -172,24 +172,15 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
         message.body = corpo_html
         message.content_type = 'HTML'
 
-        # Gestione allegati nativa e corretta per la libreria O365
+        # Gestione allegati nativa, pulita e senza import esterni
         if file_caricati:
-            from O365.utils import Attachment
-            import mimetypes
-
             for file in file_caricati:
-                # 1. Identifichiamo il tipo di file (MIME type)
-                mime_type, _ = mimetypes.guess_type(file.name)
-                if not mime_type:
-                    mime_type = 'application/octet-stream'
-
-                # 2. Creiamo l'oggetto Attachment passando la tupla nativa (nome, contenuto)
-                # e forziamo le proprietà che Microsoft esige
-                nuovo_allegato = Attachment((file.name, file.getvalue()))
-                nuovo_allegato.content_type = mime_type
-                
-                # 3. Lo appendiamo alla lista degli allegati del messaggio
-                message.attachments.attachments.append(nuovo_allegato)
+                # add_file accetta un parametro 'content' (i byte del file) 
+                # e un 'attachment_name' (la stringa del nome del file)
+                message.attachments.add_file(
+                    content=file.getvalue(),
+                    attachment_name=file.name
+                )
         
         message.send()
         return True
