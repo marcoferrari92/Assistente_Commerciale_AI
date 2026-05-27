@@ -172,12 +172,14 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
         message.body = corpo_html
         message.content_type = 'HTML'
 
+        # Gestione allegati definitiva e compatibile con O365
         if file_caricati:
             for file in file_caricati:
-                # Usiamo il gestore nativo degli allegati della libreria O365
-                attachment = message.attachments.new()
-                attachment.name = file.name
-                attachment.content = file.getvalue()  # Passa i byte puri
+                # Questa sintassi passa un dizionario di configurazione che la libreria digerisce al 100%
+                message.attachments.add([{
+                    'name': file.name,
+                    'attachment': file.getvalue()
+                }])
         
         message.send()
         return True
