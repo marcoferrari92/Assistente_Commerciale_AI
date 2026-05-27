@@ -94,7 +94,7 @@ def ottieni_account_exchange():
 
 
 def crea_evento_su_exchange(account, user_email, dati_evento):
-    """Esegue la creazione dell'evento su Outlook impostando Titolo e Corpo personalizzati"""
+    """Esegue la creazione dell'evento verificando l'esistenza del calendario con la sintassi corretta O365, timezone e HTML"""
     try:
         schedule = account.schedule(resource=user_email)
         
@@ -110,32 +110,48 @@ def crea_evento_su_exchange(account, user_email, dati_evento):
             
         calendar = schedule.get_default_calendar()
         
-        start_datetime = datetime.combine(dati_evento["promemoria"], dati_evento["orario_promemoria"])
+        # 1. CORREZIONE ORARIO (TIMEZONE): Forziamo il fuso orario italiano di Roma
+        import zoneinfo
+        from datetime import datetime, timedelta
+        fuso_locale = zoneinfo.ZoneInfo("Europe/Rome")
+        
+        start_datetime = datetime.combine(
+            dati_evento["promemoria"], 
+            dati_evento["orario_promemoria"]
+        ).replace(tzinfo=fuso_locale)
+        
         end_datetime = start_datetime + timedelta(minutes=30)
         
-        # Estraiamo i dati per evitare stringhe vuote brutte da vedere
+        # Estraiamo i dati per sicurezza
         cliente = dati_evento.get("cliente", "Cliente non specificato")
         prossimo_step = dati_evento.get("next_step", "Nessun'azione pianificata")
         oggetto = dati_evento.get("oggetto", "Nessun oggetto")
         note_precedenti = dati_evento.get("note", "Nessuna nota inserita")
         
-        # SOLUZIONE: Facciamo la sostituzione qui fuori, così eliminiamo il backslash dalla f-string
+        # Sostituzione degli "a capo" fuori dalla f-string per evitare errori di sintassi
         note_html = note_precedenti.replace("\n", "<br>")
         
         new_event = calendar.new_event()
         
-        # 1. NUOVO TITOLO: Cliente - Prossimo step
+        # TITOLO: Cliente - Prossimo step
         new_event.subject = f"🔔 {cliente} - {prossimo_step}"
         
-        # 2. NUOVO CORPO HTML: Usiamo la variabile d'appoggio pulita
-        corpo_evento_html = (
-            f"🎯 <b>Oggetto:</b> {oggetto}<br><br>"
-            f"📝 <b>Note evento precedente:</b><br>{note_html}"
-        )
+        # 2. CORREZIONE BODY HTML: Struttura formale completa senza triple virgolette per preservare l'editor
+        pezzi_body = [
+            "<html>",
+            "<body>",
+            "<div style='font-family: Arial, sans-serif; font-size: 14px; color: #333333;'>",
+            f"🎯 <b>Oggetto:</b> {oggetto}<br><br>",
+            f"📝 <b>Note evento precedente:</b><br>{note_html}",
+            "</div>",
+            "</body>",
+            "</html>"
+        ]
+        corpo_evento_html = "".join(pezzi_body)
         
-        # Assegniamo il testo e forziamo il formato HTML
+        # Forziamo il rendering in HTML su Outlook
         new_event.body = corpo_evento_html
-        new_event.content_type = 'HTML'  
+        new_event.content_type = 'HTML'
         
         new_event.start = start_datetime
         new_event.end = end_datetime
