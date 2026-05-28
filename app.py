@@ -293,75 +293,78 @@ def invia_email_collega(account, user_email, user_real_name, email_collega, ogge
         return False
 
 
+
+
 def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
     """
-    Scarica l'anagrafica completa dall'API ufficiale Imprendo e calcola
-    il match ottimale gestendo correttamente le chiavi minuscole del server.
+    Versione DEFINITIVA a Consumo Zero: Estrae i dati dalla chiave 'clienti'
+    e usa la libreria nativa difflib per fare il fuzzymatching locale.
     """
     import requests
+    import json
     import difflib
     
     url_api = "https://nethimprendo.imprendosrl.com/imprendo/api/imprendo/clienti/lista"
-    
-    if "api_imprendo_token" not in st.secrets:
-        st.error("⚠️ Token 'api_imprendo_token' MANCANTE nei Secrets di Streamlit!")
-        return []
-        
-    headers = {
-        "Authorization": f"Bearer {st.secrets['api_imprendo_token']}"
-    }
+    headers = {"Authorization": f"Bearer {st.secrets['api_imprendo_token']}"} if "api_imprendo_token" in st.secrets else {}
     
     try:
+        # 1. Scarica il JSON dal server
         risposta = requests.get(url_api, headers=headers, timeout=15)
-        
         if risposta.status_code != 200:
-            st.error(f"❌ Errore HTTP Server Net-Imprendo: Codice {risposta.status_code}")
             return []
             
         json_risposta = risposta.json()
+        blocco_data = json_risposta.get("data") or json_risposta.get("Data") or {}
         
-        # Controllo dello status sia in maiuscolo che in minuscolo
-        status_val = json_risposta.get("status") or json_risposta.get("Status")
-        if status_val != "OK":
-            st.error("❌ L'API ha risposto con uno status non valido.")
-            return []
+        if isinstance(blocco_data, str):
+            try:
+                blocco_data = json.loads(blocco_data)
+            except:
+                pass
+                
+        # Estrazione chirurgica della lista clienti
+        if isinstance(blocco_data, dict):
+            lista_clienti_db = blocco_data.get("clienti") or blocco_data.get("Clienti") or []
+        else:
+            lista_clienti_db = []
             
-        # Estrazione della lista con fallback minuscolo/maiuscolo
-        lista_clienti_db = json_risposta.get("data") or json_risposta.get("Data") or []
         st.session_state["totale_righe_crm_grezze"] = len(lista_clienti_db)
         
         if not lista_clienti_db:
             return []
             
-        # Se l'AI non ha estratto un nome dall'audio, mostra i primi 5 record come fallback
         if not nome_dettato:
             return lista_clienti_db[:5]
-            
+
+        # 2. MATCHING LOCALE (TOKEN ZERO)
         match_con_punteggio = []
+        nome_cercato_lower = nome_dettato.lower().strip()
         nota_lower = nota_dettata.lower() if nota_dettata else ""
 
         for cliente in lista_clienti_db:
-            # Controllo flessibile sui campi interni del record cliente
-            ragione_sociale = cliente.get("ragione_sociale") or cliente.get("Ragione_sociale") or cliente.get("ragioneSociale") or ""
-            indirizzo = cliente.get("indirizzo") or cliente.get("Indirizzo") or ""
-            citta = cliente.get("citta") or cliente.get("Citta") or ""
-            
+            if not isinstance(cliente, dict):
+                continue
+                
+            ragione_sociale = str(cliente.get("ragione_sociale") or "").strip()
             if not ragione_sociale:
                 continue
                 
-            # Calcolo somiglianza testuale sul nome dell'azienda
-            punteggio_nome = difflib.SequenceMatcher(None, nome_dettato.lower(), ragione_sociale.lower()).ratio()
+            # Calcolo somiglianza testuale sulla Ragione Sociale (Valore da 0.0 a 1.0)
+            punteggio_nome = difflib.SequenceMatcher(None, nome_cercato_lower, ragione_sociale.lower()).ratio()
             
-            # Algoritmo Geografico basato sulle note dettate
-            punteggio_indirizzo = 0.0
-            if citta and citta.lower() in nota_lower:
-                punteggio_indirizzo += 0.35  
-            if indirizzo and indirizzo.lower() in nota_lower:
-                punteggio_indirizzo += 0.55  
+            # Bonus Geografico opzionale se hai pronunciato la città o la via nelle note
+            citta_val = str(cliente.get("citta") or "").strip().lower()
+            via_val = str(cliente.get("indirizzo") or "").strip().lower()
+            
+            punteggio_geografico = 0.0
+            if citta_val and citta_val in nota_lower:
+                punteggio_geografico += 0.20  # Bonus se trova la città nelle note
+            if via_val and via_val in nota_lower:
+                punteggio_geografico += 0.30  # Bonus se trova la via nelle note
                 
-            punteggio_totale = punteggio_nome + punteggio_indirizzo
+            punteggio_totale = punteggio_nome + punteggio_geografico
             
-            # Soglia tollerante per catturare variazioni dell'audio
+            # Filtro di sbarramento: teniamo solo i risultati con una minima corrispondenza
             if punteggio_totale > 0.25:
                 match_con_punteggio.append({
                     "cliente_info": cliente,
@@ -370,56 +373,15 @@ def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
                 
         # Ordina dal punteggio più alto a quello più basso
         match_con_punteggio.sort(key=lambda x: x["punteggio"], reverse=True)
-        return [item["cliente_info"] for item in match_con_punteggio[:5]]
+        
+        # Estrae i primi 5 migliori record originali completi
+        risultati_finali = [item["cliente_info"] for item in match_con_punteggio[:5]]
+                
+        return risultati_finali
         
     except Exception as e:
-        st.error(f"💥 Errore di rete o crash interno alla funzione API: {e}")
+        st.error(f"💥 Errore durante il match locale: {e}")
         return []
-
-# =====================================================================
-# 🔥 ISPEZIONE FORZATA DI EMERGENZA: COSA RESTITUISCE DAVVERO L'API? 🔥
-# =====================================================================
-import requests
-st.write("## 🛠️ Debug Diretto Endpoint Net-Imprendo")
-
-if "api_imprendo_token" not in st.secrets:
-    st.error("Chiave 'api_imprendo_token' non trovata nei Secrets.")
-else:
-    url_test = "https://nethimprendo.imprendosrl.com/imprendo/api/imprendo/clienti/lista"
-    headers_test = {"Authorization": f"Bearer {st.secrets['api_imprendo_token']}"}
-    
-    try:
-        req_test = requests.get(url_test, headers=headers_test, timeout=10)
-        st.write(f"📡 **Codice di risposta del server (HTTP):** {req_test.status_code}")
-        
-        if req_test.status_code == 200:
-            json_grezzo = req_test.json()
-            st.success("🟢 Risposta decodificata con successo!")
-            st.write("**Chiavi di primo livello nel JSON:**", list(json_grezzo.keys()))
-            st.write("**Valore della chiave 'Status':**", json_grezzo.get("Status"))
-            
-            if "Data" in json_grezzo:
-                dati_interni = json_grezzo["Data"]
-                st.write(f"📦 **Tipo di dato dentro 'Data':** {type(dati_interni)}")
-                if isinstance(dati_interni, list):
-                    st.write(f"📊 **Numero totale di record nel database:** {len(dati_interni)}")
-                    if len(dati_interni) > 0:
-                        st.write("📋 **Struttura del primo record (Chiavi e Valori di esempio):**")
-                        st.json(dati_interni[0])
-                else:
-                    st.warning("Il campo 'Data' non è una lista. Contenuto:")
-                    st.write(dati_interni)
-            else:
-                st.error("Manca la chiave 'Data' nella risposta del server. Ecco il JSON completo:")
-                st.json(json_grezzo)
-        else:
-            st.error(f"Il server ha rifiutato la richiesta. Testo di errore:")
-            st.code(req_test.text)
-            
-    except Exception as e_test:
-        st.error(f"Impossibile contattare l'URL o decodificare la risposta: {e_test}")
-st.divider()
-# =====================================================================
 
 
 # --- 4. CONTROLLO ACCESSO MULTI-UTENTE (IMPRENDO MORPHEUS) ---
@@ -716,7 +678,7 @@ if utente_connesso:
                     
                     st.session_state.audio_summary_done = False 
                     st.session_state.mic_key_counter += 1 
-                    st.rerun()
+                    #st.rerun()
 
     st.write("")
     st.write("")
@@ -776,16 +738,25 @@ if utente_connesso:
                     st.session_state.form_data["cliente"] = cliente_corrente
                     st.session_state.form_data["indirizzo"] = ""
                 else:
-                    idx_sel = elenco_opzioni.index(scelta)
-                    cliente_scelto = suggeriti[idx_sel]
+                    # Usiamo un blocco try/except per evitare che Streamlit vada in crash 
+                    # se l'indice della selectbox non si allinea immediatamente
+                    try:
+                        idx_sel = elenco_opzioni.index(scelta)
+                        cliente_scelto = suggeriti[idx_sel]
+                    except ValueError:
+                        # Fallback di sicurezza: se non trova l'indice, prende il primo suggerito
+                        cliente_scelto = suggeriti[0]
+
                     st.session_state.form_data["cliente"] = cliente_scelto.get("ragione_sociale")
                     st.session_state.form_data["id_cliente_crm"] = cliente_scelto.get("id_clienti")
                     
-                    # Salviamo stabilmente l'indirizzo nello stato globale
+                    # MAPPING RIGOROSO BASATO SULLE SPECIFICHE UTENTI/CLIENTI REALI
                     ind = cliente_scelto.get("indirizzo", "")
-                    cit = cliente_scelto.get("citta", "")
+                    cit = cliente_scelto.get("citta", "")      # <-- Usa 'citta' senza accento come da DB
                     prv = cliente_scelto.get("provincia", "")
                     cap = cliente_scelto.get("cap", "")
+                    
+                    # Compone l'indirizzo finale visibile a schermo
                     st.session_state.form_data["indirizzo"] = f"{ind} – {cap} {cit} ({prv})".strip(" – ()")
             else:
                 st.session_state.form_data["cliente"] = st.text_input("Cliente", value=cliente_corrente)
@@ -798,22 +769,6 @@ if utente_connesso:
                 placeholder="In attesa della selezione del cliente..."
             )
             
-            # --- BLOCCO DIAGNOSTICA CRM ---
-            with st.expander("🔍 Stato Diagnostica CRM (Clicca per espandere)"):
-                totale_grezzo = st.session_state.get("totale_righe_crm_grezze", "Mai campionato (Fai un audio)")
-                st.write(f"✍️ **Cliente rilevato dall'audio:** '{cliente_corrente}'")
-                st.metric(label="📦 Righe totali restituite dall'API", value=str(totale_grezzo))
-                st.write(f"📊 **Aziende suggerite dopo il filtro:** {len(suggeriti)}")
-                if suggeriti:
-                    st.json(suggeriti)
-
-            if suggeriti:
-                if st.button("🔄 Disassocia e inserisci a mano", size="small"):
-                    st.session_state.clienti_suggeriti = []
-                    st.session_state.form_data["indirizzo"] = ""
-                    st.session_state.form_data["id_cliente_crm"] = None
-                    st.rerun()
-            # -----------------------------------------------------------------
             st.session_state.form_data["tipologia"] = st.selectbox("Tipologia", ["telefonata", "email", "visita"], index=["telefonata", "email", "visita"].index(st.session_state.form_data["tipologia"]) if st.session_state.form_data["tipologia"] in ["telefonata", "email", "visita"] else 0)
             st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
             st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
