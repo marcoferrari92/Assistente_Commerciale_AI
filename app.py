@@ -1,424 +1,998 @@
 import streamlit as st
-import pandas as pd
-import plotly.express as px
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go
-import matplotlib.pyplot as plt
-import re
+from openai import OpenAI
+from streamlit_mic_recorder import mic_recorder
+import io
 import json
-import numpy as np
+from datetime import datetime, time, timedelta
 
-st.set_page_config(layout="wide")
+# --- 1. CONFIGURAZIONE PAGINA ---
+st.set_page_config(page_title="AI Smart Sales CRM", page_icon="🎙️", layout="centered")
 
-
-from eventi_panoramica import distribuzione_eventi
-from eventi_performance_team import analisi_performance_utenti
-from eventi_aziende import coinvolgimento_aziende
-from eventi_loading import carica_eventi
-from ordini_loading import carica_ordini
-from ordini_importi import validazione_importi
-from ordini_panaromica import mostra_panoramica_ordini
-from ordini_conversioni import analisi_conversione_preventivi
-        
-
-def DATA_range(df):
-    
-    date = df['DATA'].dropna()
-    
-    if not date.empty:
-        d_min, d_max = date.min().date(), date.max().date()
-        #st.info(f"📅 Dati disponibili: dal **{d_min.strftime('%d/%m/%Y')}** al **{d_max.strftime('%d/%m/%Y')}**")
-        
-        return d_min, d_max
-        
-    return None, None
-
-
-def DATA_filtering(period, df):
-    
-    if isinstance(period, tuple) and len(period) == 2:
-        #DATA_start, DATA_end = period
-        df_filtrato = df[
-                (df['DATA'].dt.date >= period[0]) & 
-                (df['DATA'].dt.date <= period[1])
-                ].copy()
-        
-    # Un piccolo avviso se manca una delle due date (inizio o fine)
-    else:
-        df_filtrato = df_events.copy()
-        st.warning("Seleziona entrambe le date (inizio e fine) per filtrare.")
-
-    return df_filtrato
-
-
-def colora_stato(val):
-    """Funzione di utilità per colorare il testo nella tabella Streamlit"""
-    colori = {
-        "AGGIUDICATO (CHIUSO)": "color: #4E944F; font-weight: bold;",
-        "AGGIUDICATO (APERTO)": "color: #B4E197; font-weight: bold;",
-        "IN SCADENZA": "color: #CCAA00; font-weight: bold;",
-        "IN ATTESA": "color: #007BFF;",
-        "PERSO": "color: #FF4B4B;"
+# --- 2. INIZIALIZZAZIONE STATO GLOBALE ---
+if 'form_data' not in st.session_state:
+    st.session_state.form_data = {
+        "cliente": "",
+        "id_cliente_crm": None,       
+        "indirizzo": "",  
+        "tipologia": "telefonata",
+        "oggetto": "",
+        "contatto": "",
+        "vibes": None,  
+        "esito": "", 
+        "note": "",
+        "next_step": "",        
+        "promemoria": None,
+        "orario_promemoria": time(9, 0),
+        "salva_su_calendario": False, 
+        "allegati": []  
     }
-    return colori.get(val, "color: black;")
+if 'campi_mancanti' not in st.session_state:
+    st.session_state.campi_mancanti = []
+
+if 'audio_summary_done' not in st.session_state:
+    st.session_state.audio_summary_done = False
+
+if 'mic_key_counter' not in st.session_state:
+    st.session_state.mic_key_counter = 0
+
+# Inizializzazione stati per la nuova tab di condivisione email
+if "email_collega" not in st.session_state:
+    st.session_state.email_collega = ""
+if "oggetto_email" not in st.session_state:
+    st.session_state.oggetto_email = ""
+if "messaggio_email_personalizzato" not in st.session_state:
+    st.session_state.messaggio_email_personalizzato = ""
+if "invia_email_attivo" not in st.session_state:
+    st.session_state.invia_email_attivo = False
+if 'clienti_suggeriti' not in st.session_state:
+    st.session_state.clienti_suggeriti = []
 
 
+# --- 2.5 COLORAZIONE DINAMICA DELLO SFONDO (CSS INJECTION) ---
+# Determina il colore di sfondo in base alle Vibes (tonalità pastello molto tenui)
+bg_color = "rgba(0, 0, 0, 0)"  # Sfondo standard trasparente/predefinito
+if st.session_state.form_data["vibes"] == "Positivo 👍":
+    bg_color = "rgba(46, 204, 113, 0.25)"  # Verde pastello delicatissimo
+elif st.session_state.form_data["vibes"] == "Negativo 👎":
+    bg_color = "rgba(231, 76, 60, 0.25)"   # Rosso pastello delicatissimo
+
+st.markdown(f"""
+    <style>
+    .stApp {{
+        background-color: {bg_color};
+        transition: background-color 0.6s ease-in-out;
+    }}
+    </style>
+""", unsafe_allow_html=True)
 
 
+# --- 3. FUNZIONI DI SINCRO CON MICROSOFT EXCHANGE (FLUSSO APPLICATIVO DIRETTO) ---
 
-
-
-def analizza_performance_commerciali(df_report):
+def ottieni_account_exchange():
+    """Inizializza l'account O365 in modalità applicativa ed esegue l'autenticazione nativa silenziosa"""
+    from O365 import Account
     
-    # 1. PREPARAZIONE DATI
-    df_integro = df_report.copy()
-    if 'Analisi_Integrita' in df_report.columns:
-        df_integro = df_integro[df_integro['Analisi_Integrita'] == "Dato Integro"]
-
-    # 2. CALCOLO AGGREGATO BASE
-    gruppo_agente = df_integro.groupby('CODICE GESTIONALE UTENTE')
+    if "microsoft_exchange" not in st.secrets:
+        st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets di Streamlit!")
+        return None
+        
+    credentials = (
+        st.secrets["microsoft_exchange"]["client_id"], 
+        st.secrets["microsoft_exchange"]["client_secret"]
+    )
+    tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
     
-    performance = gruppo_agente.agg(
-        Nr_Prev=('ID DOCUMENTO', 'nunique'),
-        Vol_Prev=('TOTALE', 'sum'),
-        Nr_Vinti=('STATO_FINALE', lambda x: x.str.contains("AGGIUDICATO").sum()),
-        Vol_Vinto=('TOTALE ORDINE', 'sum')
-    ).reset_index()
-
-    # 3. CALCOLO DETTAGLI CHIUSI/APERTI
-    chiusi = df_integro[df_integro['STATO_FINALE'] == "AGGIUDICATO (CHIUSO)"].groupby('CODICE GESTIONALE UTENTE').agg(
-        Nr_Chiusi=('ID DOCUMENTO', 'count'), Vol_Chiusi=('TOTALE ORDINE', 'sum')
-    ).reset_index()
-
-    aperti = df_integro[df_integro['STATO_FINALE'] == "AGGIUDICATO (APERTO)"].groupby('CODICE GESTIONALE UTENTE').agg(
-        Nr_Aperti=('ID DOCUMENTO', 'count'), Vol_Aperti=('TOTALE ORDINE', 'sum')
-    ).reset_index()
-
-    performance = performance.merge(chiusi, on='CODICE GESTIONALE UTENTE', how='left').merge(aperti, on='CODICE GESTIONALE UTENTE', how='left').fillna(0)
-
-    # 4. CALCOLO RATE NUMERICI (Per i Grafici)
-    performance['Hit_Rate_Nr'] = (performance['Nr_Vinti'] / performance['Nr_Prev'] * 100).fillna(0)
-
-    # 5. FUNZIONI FORMATTAZIONE PARENTESI (Per le Tabelle)
-    def fmt_val_pct(val, total):
-        pct = (val / total * 100) if total > 0 else 0
-        return f"€ {val:,.2f} ({pct:.1f}%)"
-
-    def fmt_nr_pct(val, total):
-        pct = (val / total * 100) if total > 0 else 0
-        return f"{int(val)} ({pct:.1f}%)"
-
-    performance['Nr. Prev. Vinti (%)'] = performance.apply(lambda r: fmt_nr_pct(r['Nr_Vinti'], r['Nr_Prev']), axis=1)
-    performance['Vol. Vinto (%)'] = performance.apply(lambda r: fmt_val_pct(r['Vol_Vinto'], r['Vol_Prev']), axis=1)
-    performance['Nr. Ord. (Chiusi)'] = performance.apply(lambda r: fmt_nr_pct(r['Nr_Chiusi'], r['Nr_Vinti']), axis=1)
-    performance['Vol. Ord. (Chiusi)'] = performance.apply(lambda r: fmt_val_pct(r['Vol_Chiusi'], r['Vol_Vinto']), axis=1)
-    performance['Nr. Ord. (Aperti)'] = performance.apply(lambda r: fmt_nr_pct(r['Nr_Aperti'], r['Nr_Vinti']), axis=1)
-    performance['Vol. Ord. (Aperti)'] = performance.apply(lambda r: fmt_val_pct(r['Vol_Aperti'], r['Vol_Vinto']), axis=1)
-
-    # 6. VISUALIZZAZIONE TABELLA GENERALE
-    st.write("")
-    st.subheader("📈 Comparativa")
-    st.write("")
-    df_gen = performance[['CODICE GESTIONALE UTENTE', 'Nr_Prev', 'Nr. Prev. Vinti (%)', 'Vol_Prev', 'Vol. Vinto (%)', 
-                          'Nr. Ord. (Chiusi)', 'Vol. Ord. (Chiusi)', 'Nr. Ord. (Aperti)', 'Vol. Ord. (Aperti)']].copy()
-    df_gen.columns = ['Utente', 'Nr. Prev.', 'Nr. Prev. Vinti (%)', 'Vol. Prev.', 'Vol. Vinto (%)', 
-                      'Nr. Ord. (Chiusi)', 'Vol. Ord. (Chiusi)', 'Nr. Ord. (Aperti)', 'Vol. Ord. (Aperti)']
+    # 1. Inizializziamo l'account dichiarando il flusso di credenziali
+    account = Account(credentials, auth_flow_type='credentials', tenant_id=tenant_id)
     
-    st.dataframe(df_gen.style.format({'Nr. Prev.': '{:,.0f}', 'Vol. Prev.': '€ {:,.2f}'}), use_container_width=True, hide_index=True)
-
-    # --- 📊 SEZIONE GRAFICI COMPARATIVI (Side-by-Side) ---
-    st.write("")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        # Grafico a Barre: Offerto vs Vinto
-        fig_bar = px.bar(
-            performance, 
-            x='CODICE GESTIONALE UTENTE', 
-            y=['Vol_Prev', 'Vol_Vinto'],
-            barmode='group',
-            title="Volume Preventivato vs Vinto",
-            labels={'value': 'Euro (€)', 'variable': 'Tipo Volume', 'CODICE GESTIONALE UTENTE': 'Utente'},
-            color_discrete_map={'Vol_Prev': '#A2D2FF', 'Vol_Vinto': '#4E944F'}
-        )
-        fig_bar.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-    with col2:
-        # Scatter Plot: Efficienza
-        fig_scatter = px.scatter(
-            performance, 
-            x='Nr_Prev', 
-            y='Hit_Rate_Nr',
-            size='Vol_Vinto', 
-            color='CODICE GESTIONALE UTENTE',
-            title="Efficienza: N. Prev vs Tasso Conversione (%)",
-            labels={'Nr_Prev': 'N. Preventivi', 'Hit_Rate_Nr': 'Tasso Conversione (%)', 'Vol_Vinto': 'Volume (€)'},
-            template="plotly_white"
-        )
-        fig_scatter.update_layout(showlegend=False) # Legenda già presente nel grafico a fianco o implicita
-        st.plotly_chart(fig_scatter, use_container_width=True)
+    # 2. Richiediamo il token ad Azure tramite il metodo ufficiale
+    try:
+        if account.authenticate():
+            return account
+        else:
+            st.error("❌ Autenticazione applicativa fallita. Azure ha rifiutato le credenziali.")
+            return None
+    except Exception as auth_err:
+        st.error(f"❌ Errore durante la stretta di mano con Azure: {auth_err}. Controlla i valori inseriti nei Secrets.")
+        return None
 
 
-    # --- 7. SEZIONE DETTAGLIO SINGOLO UTENTE ---
-    st.divider()
-    st.subheader("👤 Analisi Dettagliata per Utente")
-    st.write("")
-    
-    utenti = df_report['CODICE GESTIONALE UTENTE'].unique()
-    agente_sel = st.selectbox("Seleziona un Utente per approfondire:", utenti)
-    
-    if agente_sel:
-        # Riepilogo KPI (Riga singola)
-        perf_agente = performance[performance['CODICE GESTIONALE UTENTE'] == agente_sel].copy()
-        df_kpi_agente = perf_agente[['Nr_Prev', 'Nr. Prev. Vinti (%)', 'Vol_Prev', 'Vol. Vinto (%)', 
-                                    'Nr. Ord. (Chiusi)', 'Vol. Ord. (Chiusi)', 'Nr. Ord. (Aperti)', 'Vol. Ord. (Aperti)']].copy()
-        df_kpi_agente.columns = ['Nr. Prev.', 'Nr. Prev. Vinti (%)', 'Vol. Prev.', 'Vol. Vinto (%)', 
-                                 'Nr. Ord. (Chiusi)', 'Vol. Ord. (Chiusi)', 'Nr. Ord. (Aperti)', 'Vol. Ord. (Aperti)']
-
-        st.write("")
-        st.write(f"**Riepilogo Performance**")
-        st.write("")
-        st.dataframe(df_kpi_agente.style.format({'Nr. Prev.': '{:,.0f}', 'Vol. Prev.': '€ {:,.2f}'}), use_container_width=True, hide_index=True)
-
-        # Registro Documenti (Analitico)
-        st.write("")
-        st.write(f"**Registro**")
-        st.write("")
-        df_agente_full = df_report[df_report['CODICE GESTIONALE UTENTE'] == agente_sel].copy()
-        df_display_agente = df_agente_full[[
-            'DATA', 'DATA ORDINE', 'DURATA', 'STATO_FINALE', 'INFO', 
-            'CLIENTE', 'CODICE GESTIONALE UTENTE', 'QT', 'NUM ART ORD', 'TOTALE', 'TOTALE ORDINE',
-            'ID DOCUMENTO', 'ID ORDINE'
-        ]].copy()
-
-        df_display_agente.columns = [
-            'Data Prev.', 'Data Ord.', 'Durata', 'Stato', 'Info', 
-            'Cliente', 'Utente', 'Q.tà Prev.', 'Q.tà Ord.', 'Tot. Prev.', 'Tot. Ord.', 
-            'ID Prev.', 'ID Ord.'
+def crea_evento_su_exchange(account, user_email, dati_evento):
+    """Esegue la creazione dell'evento verificando l'esistenza del calendario con la sintassi corretta O365, timezone e HTML"""
+    try:
+        schedule = account.schedule(resource=user_email)
+        
+        try:
+            calendars = schedule.list_calendars()
+        except Exception as auth_err:
+            st.error(f"❌ Errore di autorizzazione Microsoft Graph per {user_email}: {auth_err}. L'app non ha i permessi amministrativi necessari su Azure.")
+            return False
+            
+        if not calendars:
+            st.error(f"❌ Errore: Nessun calendario trovato per {user_email}. Verifica che l'utente abbia una licenza Exchange attiva e che i permessi applicativi su Azure abbiano il Consenso dell'Amministratore.")
+            return False
+            
+        calendar = schedule.get_default_calendar()
+        
+        # 1. CORREZIONE ORARIO (TIMEZONE): Forziamo il fuso orario italiano di Roma
+        import zoneinfo
+        from datetime import datetime, timedelta
+        fuso_locale = zoneinfo.ZoneInfo("Europe/Rome")
+        
+        start_datetime = datetime.combine(
+            dati_evento["promemoria"], 
+            dati_evento["orario_promemoria"]
+        ).replace(tzinfo=fuso_locale)
+        
+        end_datetime = start_datetime + timedelta(minutes=30)
+        
+        # Estraiamo i dati per sicurezza
+        cliente = dati_evento.get("cliente", "Cliente non specificato")
+        prossimo_step = dati_evento.get("next_step", "Nessun'azione pianificata")
+        oggetto = dati_evento.get("oggetto", "Nessun oggetto")
+        note_precedenti = dati_evento.get("note", "Nessuna nota inserita")
+        
+        # Sostituzione degli "a capo" fuori dalla f-string per evitare errori di sintassi
+        note_html = note_precedenti.replace("\n", "<br>")
+        
+        new_event = calendar.new_event()
+        
+        # TITOLO: Cliente - Prossimo step
+        new_event.subject = f"🔔 {cliente} - {prossimo_step}"
+        
+        # 2. CORREZIONE BODY HTML: Struttura formale completa senza triple virgolette per preservare l'editor
+        pezzi_body = [
+            "<html>",
+            "<body>",
+            "<div style='font-family: Arial, sans-serif; font-size: 14px; color: #333333;'>",
+            f"🎯 <b>Oggetto:</b> {oggetto}<br><br>",
+            f"📝 <b>Note evento precedente:</b><br>{note_html}",
+            "</div>",
+            "</body>",
+            "</html>"
         ]
-
-        st.dataframe(
-            df_display_agente.sort_values(by=['Data Prev.'], ascending=False)
-            .style.format({
-                'Data Prev.': lambda x: pd.to_datetime(x).strftime('%d/%m/%Y'),
-                'Data Ord.': lambda x: pd.to_datetime(x).strftime('%d/%m/%Y') if pd.notnull(x) else "-",
-                'Tot. Prev.': '{:,.2f} €',
-                'Tot. Ord.': '{:,.2f} €',
-                'Durata': lambda x: f"{int(x)} gg" if pd.notnull(x) else "-",
-                'Q.tà Prev.': '{:,.0f}', 
-                'Q.tà Ord.': '{:,.0f}'   
-            }).map(colora_stato, subset=['Stato']),
-            use_container_width=True, hide_index=True
-        )
-
-    return performance
-
-
-
-
-# ***********************************************************************
-#                                 MAIN APP
-# ***********************************************************************
-
-
-st.header("Analisi Commerciali")
-st.divider()
-
-# Inizializzazione
-df_events = None
-df_orders = None
-# date calendario
-date_min = None
-date_max = None
-
-
-# *****************
-# CARICAMENTO FILE 
-# *****************
-
-# Inizializzazione variabili all'inizio dello script per evitare NameError
-df_events = None
-df_orders = None
-date_min = None
-date_max = None
-
-st.subheader("Caricamento File")
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.write("#### Eventi")
-    uploaded_file_events = st.file_uploader("Carica file eventi (formato CSV)", type="csv")
-    if uploaded_file_events:
-        df_events = carica_eventi(uploaded_file_events) 
-        if df_events is not None:
-            d_min_ev, d_max_ev = DATA_range(df_events)
-            date_min, date_max = d_min_ev, d_max_ev
-
-with col2:
-    st.write("#### Ordini")
-    uploaded_file_orders = st.file_uploader("Carica file ordini (formato JSON)", type="json")
-    if uploaded_file_orders:
-        df_orders = carica_ordini(uploaded_file_orders) 
-        if df_orders is not None:
-            d_min_or, d_max_or = DATA_range(df_orders)
-            date_min, date_max = d_min_or, d_max_or
-
-
-# --- SEZIONE FILTRO PERIODO ---
-# Attiviamo i filtri solo se almeno uno dei due DF è stato creato
-if date_min is not None and date_max is not None:
-    with col3:
-        st.write("#### Periodo Analisi")
-        period = st.date_input(
-            "Seleziona date:",
-            value=(date_min, date_max),
-            min_value=date_min,
-            max_value=date_max
-        )
-
-    # Applichiamo il filtraggio solo se l'utente ha selezionato un range completo (inizio e fine)
-    if isinstance(period, tuple) and len(period) == 2:
-        if df_events is not None:
-            df_events = DATA_filtering(period, df_events)
+        corpo_evento_html = "".join(pezzi_body)
         
-        if df_orders is not None:
-            df_orders = DATA_filtering(period, df_orders)
-    else:
-        st.warning("Completa la selezione del periodo (Data inizio e Data fine).")
-else:
-    st.info("Carica almeno un file per attivare i filtri temporali.")
-
-
-
-# ***********************************************************************
-#                             ANALISI ORDINI 
-# ***********************************************************************
-
-st.divider()
-st.subheader("Analisi Ordini e Preventivi")
-st.write("")
-
-if df_orders is not None: 
-    
-    # 1. CHIAMATA ALLA FUNZIONE DI VALIDAZIONE (ESTERNA)
-    # df_orders_pulito restituisce record già unici per 'ID DOCUMENTO' con la colonna 'TOTALE' inclusa
-    df_orders_pulito, df_orders_errori = validazione_importi(df_orders)
-    
-    if df_orders_pulito is not None and not df_orders_pulito.empty:
+        # Forziamo il rendering in HTML su Outlook
+        new_event.body = corpo_evento_html
+        new_event.content_type = 'HTML'
         
-        # ********************************
-        #  PANORAMICA ORDINI E PREVENTIVI
-        # ********************************
-        st.write("")
-        mostra_panoramica_ordini(df_orders_pulito)
+        new_event.start = start_datetime
+        new_event.end = end_datetime
+        
+        new_event.save()
+        return True
+    except IndexError:
+        st.error(f"❌ Errore [IndexError]: Il server Microsoft ha risposto con un elenco vuoto. Non ci sono calendari accessibili per {user_email}.")
+        return False
+    except Exception as e:
+        st.error(f"Errore durante l'invio dell'evento a Exchange: {e}")
+        return False
+
+
+def invia_email_collega(account, user_email, user_real_name, email_collega, oggetto_email, dati_evento, messaggio_personalizzato="", file_caricati=None):
+    """Invia l'email via Microsoft Graph richiedendo il token in modo nativo e indipendente da O365"""
+    import requests
+    import base64
+    import mimetypes
+
+    try:
+        # 1. Recuperiamo le credenziali Azure direttamente dai Secrets di Streamlit
+        if "microsoft_exchange" not in st.secrets:
+            st.error("⚠️ Configurazione 'microsoft_exchange' mancante nei Secrets!")
+            return False
             
-        # **********************************
-        #  CONVERSIONE PREVENTIVI - GLOBALE
-        # **********************************
-        st.write("")
-        st.write("")
-        with st.expander("🎯 Analisi Conversione Preventivi Globale"):
-            if isinstance(period, tuple) and len(period) == 2:
-                max_slider = max(1, (period[1] - period[0]).days)
-            else:
-                max_slider = 180
+        client_id = st.secrets["microsoft_exchange"]["client_id"]
+        client_secret = st.secrets["microsoft_exchange"]["client_secret"]
+        tenant_id = st.secrets["microsoft_exchange"]["tenant_id"]
+
+        # 2. Richiediamo il Token di accesso direttamente all'endpoint ufficiale di Microsoft
+        url_oauth = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+        payload_oauth = {
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "https://graph.microsoft.com/.default"
+        }
+        
+        risposta_oauth = requests.post(url_oauth, data=payload_oauth)
+        if risposta_oauth.status_code != 200:
+            st.error(f"❌ Errore autenticazione diretta Azure: {risposta_oauth.text}")
+            return False
+            
+        token_servizio = risposta_oauth.json().get("access_token")
+
+        # 3. Prepariamo l'oggetto dell'e-mail
+        subject_finale = oggetto_email if oggetto_email else f"📋 CRM Riepilogo: {dati_evento['cliente']}"
+
+        # 4. Gestione nota commerciale opzionale
+        blocco_nota = ""
+        if messaggio_personalizzato:
+            blocco_nota = (
+                "<div style='margin-bottom: 20px; padding: 10px; background-color: #f8f9fa; border-left: 3px solid #7f8c8d;'>"
+                f"<p style='margin: 0; font-size: 15px; color: #555555;'><strong>Nota di {user_real_name}:</strong></p>"
+                f"<p style='margin: 5px 0 0 0; font-style: italic; color: #2c3e50;'>\"{messaggio_personalizzato}\"</p>"
+                "</div>"
+                "<hr style='border: 0; border-top: 1px solid #eeeeee; margin: 20px 0;'>"
+            )
+
+        # 5. Costruzione del corpo HTML (Senza triple virgolette per l'editor)
+        pezzi_html = [
+            "<html>",
+            "<body>",
+            "<div style='font-family: Arial, sans-serif; color: #333333; max-width: 600px; margin: 0 auto; line-height: 1.6;'>",
+            f"{blocco_nota}",
+            "<p style='margin: 0 0 15px 0; font-size: 15px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;'>Riepilogo Attività</p>",
+            f"<p style='margin: 0 0 10px 0; font-size: 16px;'>🏢 <strong>Cliente:</strong> {dati_evento['cliente']}</p>",
+            f"<p style='margin: 0 0 20px 0; font-size: 16px;'>🎯 <strong>Oggetto Evento:</strong> {dati_evento['oggetto']}</p>",
+            "<div style='margin-top: 20px;'>",
+            "<p style='margin: 0 0 8px 0; font-size: 15px; font-weight: bold; color: #2c3e50;'>📝 Note:</p>",
+            f"<div style='white-space: pre-line; color: #444444; font-size: 15px;'>{dati_evento['note']}</div>",
+            "</div>",
+            f"<p style='margin-top: 35px; font-size: 15px; color: #333333;'>Un saluto,<br><strong>{user_real_name}</strong></p>",
+            "</div>",
+            "</body>",
+            "</html>"
+        ]
+        corpo_html = "".join(pezzi_html)
+
+        # 6. Payload JSON per l'API Microsoft Graph
+        email_payload = {
+            "message": {
+                "subject": subject_finale,
+                "body": {
+                    "contentType": "HTML",
+                    "content": corpo_html
+                },
+                "toRecipients": [
+                    {
+                        "emailAddress": {
+                            "address": email_collega
+                        }
+                    }
+                ],
+                "attachments": []
+            },
+            "saveToSentItems": "true"
+        }
+
+        # 7. Elaborazione allegati in Base64
+        if file_caricati:
+            for file in file_caricati:
+                mime_type, _ = mimetypes.guess_type(file.name)
+                if not mime_type:
+                    mime_type = 'application/octet-stream'
+
+                encoded_content = base64.b64encode(file.getvalue()).decode('utf-8')
                 
-            c1, c2, c3, c4, c5 = st.columns([0.2, 1, 0.3, 1, 0.2])
-            with c2:
-                finestra = st.slider("Validità preventivi (giorni):", min_value=1, max_value=max_slider, value=30)
-            with c4:
-                scadenza = st.number_input("Pre-avviso 'In Scadenza' (giorni):", min_value=1, max_value=30, value=7)
-            
-            st.write("")
-            df_report = analisi_conversione_preventivi(df_orders_pulito, finestra, scadenza)
+                allegato_json = {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": file.name,
+                    "contentType": mime_type,
+                    "contentBytes": encoded_content
+                }
+                email_payload["message"]["attachments"].append(allegato_json)
 
+        # 8. Spedizione diretta a Microsoft Graph
+        url_api = f"https://graph.microsoft.com/v1.0/users/{user_email}/sendMail"
+        headers_api = {
+            "Authorization": f"Bearer {token_servizio}",
+            "Content-Type": "application/json"
+        }
+
+        risposta = requests.post(url_api, json=email_payload, headers=headers_api)
+
+        if risposta.status_code == 202:
+            return True
+        else:
+            st.error(f"❌ Errore API Microsoft ({risposta.status_code}): {risposta.text}")
+            return False
+
+    except Exception as e:
+        st.error(f"Errore durante l'invio dell'email: {e}")
+        return False
+
+
+
+
+def trova_clienti_simili_avanzato(nome_dettato, nota_dettata):
+    """
+    Versione DEFINITIVA a Consumo Zero: Estrae i dati dalla chiave 'clienti'
+    e usa la libreria nativa difflib per fare il fuzzymatching locale.
+    """
+    import requests
+    import json
+    import difflib
+    
+    url_api = "https://nethimprendo.imprendosrl.com/imprendo/api/imprendo/clienti/lista"
+    headers = {"Authorization": f"Bearer {st.secrets['api_imprendo_token']}"} if "api_imprendo_token" in st.secrets else {}
+    
+    try:
+        # 1. Scarica il JSON dal server
+        risposta = requests.get(url_api, headers=headers, timeout=15)
+        if risposta.status_code != 200:
+            return []
             
-        # ******************************************
-        #  CONVERSIONE PREVENTIVI - PER COMMERCIALE
-        # ******************************************
-        st.write("")
-        st.write("")
-        with st.expander("🏆 Analisi Conversione Preventivi per Commerciale"):
-                if df_report is not None:
-                        df_performance = analizza_performance_commerciali(df_report)
-                        
+        json_risposta = risposta.json()
+        blocco_data = json_risposta.get("data") or json_risposta.get("Data") or {}
+        
+        if isinstance(blocco_data, str):
+            try:
+                blocco_data = json.loads(blocco_data)
+            except:
+                pass
+                
+        # Estrazione chirurgica della lista clienti
+        if isinstance(blocco_data, dict):
+            lista_clienti_db = blocco_data.get("clienti") or blocco_data.get("Clienti") or []
+        else:
+            lista_clienti_db = []
+            
+        st.session_state["totale_righe_crm_grezze"] = len(lista_clienti_db)
+        
+        if not lista_clienti_db:
+            return []
+            
+        if not nome_dettato:
+            return lista_clienti_db[:5]
+
+        # 2. MATCHING LOCALE (TOKEN ZERO)
+        match_con_punteggio = []
+        nome_cercato_lower = nome_dettato.lower().strip()
+        nota_lower = nota_dettata.lower() if nota_dettata else ""
+
+        for cliente in lista_clienti_db:
+            if not isinstance(cliente, dict):
+                continue
+                
+            ragione_sociale = str(cliente.get("ragione_sociale") or "").strip()
+            if not ragione_sociale:
+                continue
+                
+            # Calcolo somiglianza testuale sulla Ragione Sociale (Valore da 0.0 a 1.0)
+            punteggio_nome = difflib.SequenceMatcher(None, nome_cercato_lower, ragione_sociale.lower()).ratio()
+            
+            # Bonus Geografico opzionale se hai pronunciato la città o la via nelle note
+            citta_val = str(cliente.get("citta") or "").strip().lower()
+            via_val = str(cliente.get("indirizzo") or "").strip().lower()
+            
+            punteggio_geografico = 0.0
+            if citta_val and citta_val in nota_lower:
+                punteggio_geografico += 0.20  # Bonus se trova la città nelle note
+            if via_val and via_val in nota_lower:
+                punteggio_geografico += 0.30  # Bonus se trova la via nelle note
+                
+            punteggio_totale = punteggio_nome + punteggio_geografico
+            
+            # Filtro di sbarramento: teniamo solo i risultati con una minima corrispondenza
+            if punteggio_totale > 0.25:
+                match_con_punteggio.append({
+                    "cliente_info": cliente,
+                    "punteggio": punteggio_totale
+                })
+                
+        # Ordina dal punteggio più alto a quello più basso
+        match_con_punteggio.sort(key=lambda x: x["punteggio"], reverse=True)
+        
+        # Estrae i primi 5 migliori record originali completi
+        risultati_finali = [item["cliente_info"] for item in match_con_punteggio[:5]]
+                
+        return risultati_finali
+        
+    except Exception as e:
+        st.error(f"💥 Errore durante il match locale: {e}")
+        return []
+
+
+# --- 4. CONTROLLO ACCESSO MULTI-UTENTE (IMPRENDO MORPHEUS) ---
+def login_commerciale():
+    if "user_data" not in st.session_state:
+        st.session_state.user_data = None
+
+    if st.session_state.user_data:
+        return st.session_state.user_data
+
+    st.title("🔒 Imprendo Morpheus")
+    st.write("### Il tuo Assistente AI")
+    st.write(r"""
+    *"Pillola blu, fine della storia: domani ti sveglierai in camera tua, e crederai a quello che vorrai. 
+    Pillola rossa, resti nel Paese delle Meraviglie, e vedrai quant'è profonda la tana del Bianconiglio. 
+    Ti sto offrendo solo la verità. Ricordalo. Niente di più"*""")
+    
+    username = st.text_input(
+        "Username (Nome)", 
+        key="login_username", 
+        autocomplete="username"
+    ).lower().strip()
+    
+    password = st.text_input(
+        "Password", 
+        type="password", 
+        key="login_password", 
+        autocomplete="current-password"
+    )
+    
+    if st.button("Accedi", use_container_width=True):
+        if "commerciali" in st.secrets and username in st.secrets["commerciali"]:
+            db_user = st.secrets["commerciali"][username]
+            if password == db_user["password"]:
+                # CORREZIONE ROBUSTA: se nei secrets manca del tutto il campo "nome", usiamo lo username formattato
+                real_name = db_user.get("nome", username.capitalize())
+                st.session_state.user_data = {
+                    "username": username, 
+                    "email": db_user["email"], 
+                    "nome": real_name
+                }
+                st.rerun()
+            else:
+                st.error("❌ Password errata! Oppure prova a clickare sul campo (a volte si bugga 🫠)")
+        else:
+            st.error("❌ Utente non trovato!")
+    return None
+
+utente_connesso = login_commerciale()
+
+# --- 5. CORE DELL'APPLICAZIONE (Eseguito solo se loggato) ---
+if utente_connesso:
+    # CORREZIONE AGGIUNTIVA: Fallback di sicurezza anche in fase di rendering sidebar
+    nome_visualizzato = utente_connesso.get("nome", utente_connesso.get("username", "Utente").capitalize())
+    st.sidebar.write(f"👤 Utente: **{nome_visualizzato}**")
+    
+    if st.sidebar.button("🚪 Logout"):
+        st.session_state.user_data = None
+        st.rerun()
+
+    # --- INIZIALIZZAZIONE CLIENT OPENAI ---
+    if "openai_key" in st.secrets:
+        client = OpenAI(api_key=st.secrets["openai_key"])
     else:
-        st.warning("⚠️ Nessun dato valido da analizzare dopo la pulizia del file JSON.")
+        st.error("⚠️ Chiave API 'openai_key' non trovato nei Secrets!")
+        client = None
+
+    # --- FUNZIONI AI ---
+    def speak(text):
+        if not client: return None
+        try:
+            response = client.audio.speech.create(model="tts-1", voice="nova", input=text)
+            return response.content
+        except Exception as e:
+            st.error(f"Errore TTS: {e}")
+            return None
+
+    def analyze_full_report(audio_bytes):
+        if not client: return None
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = "audio.mp3"
+        transcript = client.audio.transcriptions.create(model="whisper-1", file=audio_file, language="it")
         
+        current_date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        lista_colleghi_secrets = st.secrets.get("colleghi", [])
+        contesto_colleghi = ""
+        for index, c in enumerate(lista_colleghi_secrets):
+            contesto_colleghi += f"ID: {index} - Nome Completo: {c.get('nome')} (Ufficio: {c.get('ufficio')})\n"
+        
+        prompt = f"""
+        Sei l'assistente di un commerciale che si è appena interfacciato con un cliente tramite una telefonata, una visita o un'email.
+        Analizza il suo rapporto e restituisci un JSON.
+        I campi sono: cliente, tipologia, oggetto, contatto, vibes, esito, note, next_step, promemoria, orario_promemoria, nota_collega, id_collega_selezionato, oggetto_email.
+
+        REGOLE PER IL CAMPO "cliente"
+        - Inserisci il nome del cliente. 
+        - Il cliente è diverso dal campo "contatto". Se, ad esempio, dico: "Sono stato da Imprendo e ho parlato con Raffaella", il cliente è "Imprendo". 
+        
+        REGOLE PER IL CAMPO "contatto"
+        - Inserisce nome e cognome e tra parentesi l'ufficio o l'area aziendale del contatto.
+
+        REGOLE CRITICHE PER IL CAMPO 'tipologia':
+        - Indica la tipologia dell'evento.
+        - Deve essere SOLO uno di questi tre valori: "telefonata", "email", "visita".
+        - Se l'utente dice "ho chiamato", "ho fatto una videocall" o "ci siamo sentiti", usa "telefonata".
+        - Se l'utente dice "ho scritto" o "mi ha risposto alla mail", usa "email".
+        - Se l'utente dice "sono andato", "sono stato" o "abbiamo pranzato insieme" usa "visita".
+        - CRITICO: Se non è chiaro, scrivi null.
+
+        REGOLE PER IL CAMPO 'oggetto':
+        - Inserisci solo il motivo che ha generato l'evento. 
+        - Anche se il commerciale si spiega poco o in modo confuso, crea un riassunto professionale di maximum 10 parole.
+        - CRITICO: Se non dice nulla di utile per l'oggetto, scrivi null.
+
+        REGOLE PER IL CAMPO 'vibes':
+        - Analizza il tono di voce e le parole del commerciale per capire l'esito dell'evento.
+        - Se l'evento è gone bene, c'è interesse, o l'accordo è positivo, scrivi ESATTAMENTE "Positivo 👍".
+        - Se ci sono stati problemi, lamentele, esito negativo o chiusura, scrivi ESATTAMENTE "Negativo 👎".
+        - CRITICO: Se l'utente non esprime un'opinione chiara, se il tono è neutro o se non riesci a capire l'esito dal racconto, scrivi null. Non inventare o ipotizzare.
+
+        REGOLE PER IL CAMPO "esito"
+        - Estrai l'esito finale o lo stato della trattativa emerso dall'evento (es. "preventivo approvato", "interessati", "non interessati a procedere", "da ricontattare per prezzo", "trattativa avviata").
+        - Se non è specificato un esito chiaro, scrivi null.
+
+        REGOLE PER LE NOTE:
+        - Riassumi l'evento in modo tecnico, preciso ed esaustivo con almeno 20 parole.
+        - Inserisci anche le impressioni del commerciale sull'evento.
+        
+        REGOLE PER IL CAMPO 'next_step':
+        - Identifica l'azione futura concordata o pianificata.
+        - CRITICO: Se l'utente menziona una data o un orario per questa azione (es. "il 25 Giugno alle 17"), formattali esplicitamente all'interno della stringa stessa del next_step usando la struttura: "[Azione] ([DD/MM/YYYY] ore [HH:MM])" (es. "consegna preventivo al cliente (25/06/2026 ore 17:00)"). 
+        - Mantieni come anno di riferimento il 2026 se l'anno è implicito.
+        - Se non viene menzionata nessuna azione futura, scrivi null.
+        
+        REGOLE PER IL CAMPO 'promemoria':
+        - Identifica la data in cui il commerciale desidera essere avvisato o in cui è previsto il next step.
+        - Sapendo che OGGI è il {current_date_str}, converti espressioni temporali (es. "domani", "prossima settimana", "il 25 maggio") nel formato standard YYYY-MM-DD.
+        - CRITICO: Se non viene specificata alcuna data o periodo di tempo, scrivi null.
+
+        REGOLE PER IL CAMPO 'orario_promemoria':
+        - Identifica se l'utente specifica un momento della giornata o un orario per il promemoria e convertilo nel formato standard HH:MM:
+          * "mattina" o "in mattinata" -> "09:00"
+          * "pranzo" o "ora di pranzo" -> "13:00"
+          * "pomeriggio" -> "15:30"
+          * "sera" o "tardo pomeriggio" -> "18:00"
+          * Se dice un orario specifico (es. "alle 11", "alle 14:30"), usa esattamente quell'orario ("11:00", "14:30").
+        - CRITICO: Se l'utente specifica una data per il promemoria ma NON dice nessun orario o momento della giornata, assegna il valore predefinito "09:00". Se non c'è nemmeno il promemoria, scrivi null.
+
+        REGOLE PER IL CAMPO "nota_collega":
+        - Se nel testo l'utente dice qualcosa destinato a un collega (es: "scrivi al collega che...", "lascia una nota per il mio collega", "comunica a X che..."), estrai questa informazione e usala per creare un'email formale e gentile per il collega.
+        - Non firmare l'email.
+        - Se non viene rilevato alcun messaggio esplicito per un collega, scrivi null.
+
+        REGOLE PER IL CAMPO "oggetto_email":
+        - Se viene rilevata una nota, una comunicazione o un messaggio per un collega, scrivi un oggetto e-mail formale, chiaro e professionale riassumendo il contenuto.
+        - Deve obbligatoriamente includere il nome del cliente (es. "Supporto Amministrativo - [Nome Cliente]" oppure "Segnalazione Tecnica - [Nome Cliente]").
+        - Se non c'è nessuna nota per un collega, scrivi null.
+
+        REGOLE PER I CAMPI "id_collega_selezionato":
+        - Se l'utente esprime la volontà di contattare, notificare o lasciare una nota a un collega, identifica chi sia incrociando nome e ufficio.
+        - Confronta la richiesta con questo elenco ufficiale di colleghi aziendali:
+        {contesto_colleghi}
+        - Identifica quale ID corrisponde al collega corretto (es: se l'utente dice "Davide dell'ufficio tecnico", assegna l'ID associato a Davide De Meo).
+        - Se non trovi un match o non viene menzionato alcun collega, scrivi null.
+        - Restituisci SOLO il valore numerico dell'ID (es: 0, 1, 2) o null. Non scrivere stringhe di testo qui.
+
+        Se un dato manca, usa null.
+        Aggiungi il campo 'mancanti' con la lista dei campi null.
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": transcript.text}
+            ],
+            response_format={ "type": "json_object" }
+        )
+        return json.loads(response.choices[0].message.content)
+
     
+    # --- LOGICA INTERFACCIA PRINCIPALE ---
+    # Definiamo la funzione per il popup (st.dialog)
+    @st.dialog("Scollegati dal Sistema")
+    def mostra_popup_matrix():
+        st.write(r"""
+        *"Matrix è un sistema, Neo. E quel sistema è nostro nemico. Ma quando ci sei dentro ti guardi intorno e cosa vedi? 
+        Uomini d'affari, insegnanti, avvocati, falegnami.... le proiezioni mentali della gente che vogliamo salvare. 
+        Ma finché non le avremo salvate, queste persone faranno parte di quel sistema, e questo le rende nostre nemiche. 
+        Devi capire che la maggior parte di loro non è pronta per essere scollegata. Tanti di loro sono così assuefatti, 
+        così disperatamente dipendenti dal sistema, che combatterebbero per difenderlo."*
 
+        Usa le AI con coscienza. La tua creatività è lo strumento più potente.
+        """)
+        if st.button("Chiudi", use_container_width=True):
+            st.rerun()
 
-# ***********************************************************************
-#                             ANALISI EVENTI
-# ***********************************************************************
+    # Layout a due colonne per affiancare il Titolo e il Pulsante
+    col_pulsante, col_titolo  = st.columns((4, 1), gap="small", vertical_alignment="center")
 
-if df_events is not None:
-    
-
+    with col_pulsante:
+        if st.button("🔴", use_container_width=True):
+            mostra_popup_matrix()
+            
+    with col_titolo:
+        st.title("Imprendo Morpheus")
+        
     st.divider()
+    st.write("### Assistente Vocale")
     st.write("")
-    st.subheader("Analisi Eventi")
 
+    if not client:
+        st.warning("Assistente vocale non disponibile. Verifica la chiave API nei Secrets.")
+    else:
+        audio = mic_recorder(
+            start_prompt="🎤 RACCONTA L'EVENTO", 
+            stop_prompt="⏹️ ELABORA REPORT", 
+            key=f"mic_{st.session_state.mic_key_counter}"
+        )
 
-    # FILTRO CAMPAGNE MARKETING
+        if audio:
+            with st.spinner("Morpheus sta analizzando l'audio e scrivendo i dati..."):
+                res = analyze_full_report(audio['bytes'])
+                if res:
+                    st.session_state.campi_mancanti = res.get("mancanti", [])
+                    
+                    # Gestione nota dettata per il collega
+                    if "nota_collega" in res and res["nota_collega"]:
+                        st.session_state.messaggio_email_personalizzato = res["nota_collega"]
+                        st.session_state.invia_email_attivo = True
+                        
+                    # Popolamento automatico oggetto email
+                    if "oggetto_email" in res and res["oggetto_email"]:
+                        st.session_state.oggetto_email = res["oggetto_email"]
+                    
+                    # Assegnazione email usando l'ID identificato dall'AI
+                    if "id_collega_selezionato" in res and res["id_collega_selezionato"] is not None:
+                        try:
+                            idx = int(res["id_collega_selezionato"])
+                            lista_colleghi_secrets = st.secrets.get("colleghi", [])
+                            if 0 <= idx < len(lista_colleghi_secrets):
+                                st.session_state.email_collega = lista_colleghi_secrets[idx].get("email", "")
+                        except ValueError:
+                            pass
 
-    # Controlliamo se la colonna CAMPAGNA esiste nel DataFrame
-    if 'CAMPAGNA' in df_events.columns:
+                   # --- INTERROGAZIONE CRM IMMEDIATA POST AUDIO ---
+                    cliente_dettato = res.get("cliente") if res.get("cliente") else ""
+                    note_dettate = res.get("note") if res.get("note") else ""
+                    
+                    st.session_state.form_data["cliente"] = cliente_dettato
+                    
+                    suggeriti = trova_clienti_simili_avanzato(cliente_dettato, note_dettate)
+                    st.session_state.clienti_suggeriti = suggeriti
+                    
+                    # Se l'API restituisce un match perfetto, salviamo subito l'indirizzo PRIMA del ciclo
+                    if suggeriti:
+                        primo_match = suggeriti[0]
+                        st.session_state.form_data["id_cliente_crm"] = primo_match.get("id_clienti")
+                        ind = primo_match.get("indirizzo", "")
+                        cit = primo_match.get("citta", "")
+                        prv = primo_match.get("provincia", "")
+                        cap = primo_match.get("cap", "")
+                        st.session_state.form_data["indirizzo"] = f"{ind} – {cap} {cit} ({prv})".strip(" – ()")
+                    else:
+                        st.session_state.form_data["indirizzo"] = ""
+                    
+                    # --- CICLO DI POPOLAMENTO ALTRI CAMPI FORM (Salta l'indirizzo per non sovrascriverlo) ---
+                    for k in st.session_state.form_data.keys():
+                        if k == "indirizzo":
+                            continue  # Non sovrascrivere l'indirizzo estratto dal CRM
+                        if k in res:
+                            if res[k] is None:
+                                if k == "promemoria" or k == "vibes":
+                                    st.session_state.form_data[k] = None
+                                elif k == "orario_promemoria":
+                                    st.session_state.form_data[k] = time(9, 0)
+                                else:
+                                    st.session_state.form_data[k] = ""
+                            else:
+                                if k == "promemoria":
+                                    try:
+                                        st.session_state.form_data[k] = datetime.strptime(res[k], "%Y-%m-%d").date()
+                                        st.session_state.form_data["salva_su_calendario"] = True
+                                    except:
+                                        st.session_state.form_data[k] = None
+                                elif k == "orario_promemoria":
+                                    try:
+                                        st.session_state.form_data[k] = datetime.strptime(res[k], "%H:%M").time()
+                                    except:
+                                        st.session_state.form_data[k] = time(9, 0)
+                                else:
+                                    st.session_state.form_data[k] = res[k]
+                    
+                    st.session_state.audio_summary_done = False 
+                    st.session_state.mic_key_counter += 1 
+                    #st.rerun()
 
-        # Pulizia preliminare della colonna per evitare duplicati causati da spazi o minuscole
-        df_events['CAMPAGNA'] = df_events['CAMPAGNA'].astype(str).str.strip().str.upper()
-        
-        # Estraiamo le campagne uniche escludendo valori vuoti o 'NAN'
-        campagne_uniche = df_events['CAMPAGNA'].unique()
-        campagne_pulite = [c for c in campagne_uniche if c not in ['NAN', 'NONE', '', 'NAT']]
-        campagne_pulite.sort()
-        
-        # Creiamo la lista delle opzioni per il filtro inserendo "Tutte le campagne" all'inizio
-        opzioni_campagna = ["TUTTE LE CAMPAGNE"] + campagne_pulite
-        
-        # Render del selettore
+    st.write("")
+    st.write("")
+
+    # --- FEEDBACK DEI CAMPI MANCANTI ---
+    if st.session_state.campi_mancanti:
+        nomi_puliti = [
+            c.replace("_", " ").capitalize() 
+            for c in st.session_state.campi_mancanti 
+            if c.lower().strip() != "mancanti" and c != "orario_promemoria" and c != "nota_collega" and c != "id_collega_selezionato" and c != "oggetto_email" and c != "esito"
+        ]
+        if nomi_puliti:
+            st.warning(f"⚠️ **Informazioni incomplete:** L'AI non ha rilevato i seguenti dettagli dal tuo audio: {', '.join(nomi_puliti)}. Per favore, integrali a mano nel modulo sottostante.")
+
+    # Inizializziamo globalmente la variabile per gli allegati in modo che sia accessibile ovunque
+    uploaded_files = None
+
+    # --- CREAZIONE DELLE TAB ---
+    tab_dati, tab_allegati, tab_condividi = st.tabs(["📝 Evento", "📸 Allegati", "✉️ Condividi"])
+
+    # --- TAB 1: DATI DEL FORM EVENTO ---
+    with tab_dati:
         st.write("")
-        campagna_selezionata = st.selectbox(
-            "🎯 **Filtra l'analisi per Campagna Marketing:**",
-            options=opzioni_campagna,
-            index=0  # Di default mostra "Tutte le campagne"
+        st.write("### Evento")
+
+        col_r1_1, col_r1_2 = st.columns(2)
+        with col_r1_1:
+            
+            # --- INTERFACCIA SELEZIONE AVANZATA CLIENTE CRM ---
+            suggeriti = st.session_state.get("clienti_suggeriti", [])
+            cliente_corrente = st.session_state.form_data.get("cliente", "")
+
+            if suggeriti:
+                st.warning(f"🔍 Verifica Anagrafica per: **'{cliente_corrente}'**")
+                
+                elenco_opzioni = []
+                for c in suggeriti:
+                    label = f"🏢 {c.get('ragione_sociale')} ({c.get('tipo_azienda')})"
+                    elenco_opzioni.append(label)
+                
+                elenco_opzioni.append(f"✨ Forza inserimento come Nuovo: '{cliente_corrente}'")
+                elenco_opzioni.append("✍️ Inserisci manualmente un altro nome...")
+                
+                # Calcoliamo l'indice per mantenere la selezione fissa se l'utente cambia tab
+                current_index = 0
+                for idx, c in enumerate(suggeriti):
+                    if c.get("ragione_sociale") == cliente_corrente:
+                        current_index = idx
+                        break
+                
+                scelta = st.selectbox("Corrispondenza rilevata nel CRM Net-Imprendo:", elenco_opzioni, index=current_index)
+                
+                if scelta == "✍️ Inserisci manualmente un altro nome...":
+                    st.session_state.form_data["cliente"] = st.text_input("Ragione Sociale", value="")
+                    st.session_state.form_data["indirizzo"] = ""
+                elif scelta == f"✨ Forza inserimento come Nuovo: '{cliente_corrente}'":
+                    st.session_state.form_data["cliente"] = cliente_corrente
+                    st.session_state.form_data["indirizzo"] = ""
+                else:
+                    # Usiamo un blocco try/except per evitare che Streamlit vada in crash 
+                    # se l'indice della selectbox non si allinea immediatamente
+                    try:
+                        idx_sel = elenco_opzioni.index(scelta)
+                        cliente_scelto = suggeriti[idx_sel]
+                    except ValueError:
+                        # Fallback di sicurezza: se non trova l'indice, prende il primo suggerito
+                        cliente_scelto = suggeriti[0]
+
+                    st.session_state.form_data["cliente"] = cliente_scelto.get("ragione_sociale")
+                    st.session_state.form_data["id_cliente_crm"] = cliente_scelto.get("id_clienti")
+                    
+                    # MAPPING RIGOROSO BASATO SULLE SPECIFICHE UTENTI/CLIENTI REALI
+                    ind = cliente_scelto.get("indirizzo", "")
+                    cit = cliente_scelto.get("citta", "")      # <-- Usa 'citta' senza accento come da DB
+                    prv = cliente_scelto.get("provincia", "")
+                    cap = cliente_scelto.get("cap", "")
+                    
+                    # Compone l'indirizzo finale visibile a schermo
+                    st.session_state.form_data["indirizzo"] = f"{ind} – {cap} {cit} ({prv})".strip(" – ()")
+            else:
+                st.session_state.form_data["cliente"] = st.text_input("Cliente", value=cliente_corrente)
+
+            # --- CAMPO INDIRIZZO: FISSO, NATIVO E SEMPRE VISIBILE SOTTO CLIENTE ---
+            st.text_input(
+                "Indirizzo Sede Rilevato", 
+                value=st.session_state.form_data.get("indirizzo", ""), 
+                disabled=True,
+                placeholder="In attesa della selezione del cliente..."
+            )
+            
+            st.session_state.form_data["tipologia"] = st.selectbox("Tipologia", ["telefonata", "email", "visita"], index=["telefonata", "email", "visita"].index(st.session_state.form_data["tipologia"]) if st.session_state.form_data["tipologia"] in ["telefonata", "email", "visita"] else 0)
+            st.session_state.form_data["oggetto"] = st.text_input("Oggetto", value=st.session_state.form_data["oggetto"])
+            st.session_state.form_data["contatto"] = st.text_input("Contatto", value=st.session_state.form_data["contatto"])
+            
+            # Sezione Vibes
+            st.write("**Vibes (Esito generico):**")
+            v_val = st.session_state.form_data["vibes"]
+            v_idx = 0 if v_val == "Positivo 👍" else (1 if v_val == "Negativo 👎" else None)
+            v_scelta = st.radio(
+                "Esito evento", ["Positivo 👍", "Negativo 👎"], 
+                index=v_idx, horizontal=True, label_visibility="collapsed"
+            )
+            st.session_state.form_data["vibes"] = v_scelta
+            
+            # Nuovo campo Esito posizionato esattamente sotto a Vibes nella prima colonna
+            st.session_state.form_data["esito"] = st.text_input(
+                "Esito Concreto Trattativa", 
+                value=st.session_state.form_data["esito"],
+                placeholder="Es. preventivo approvato, non interessati, ecc."
+            )
+
+        with col_r1_2:
+            st.session_state.form_data["note"] = st.text_area("Note Dettagliate", value=st.session_state.form_data["note"], height=315)
+
+        st.write("")
+        st.write("")
+        st.write("### Azioni Future & Scadenze")
+        
+        st.session_state.form_data["next_step"] = st.text_input(
+            "Prossimo Step (Data e Ora)", 
+            value=st.session_state.form_data["next_step"],
+            placeholder="Es. Inviare quotazione economica"
         )
         
-        # Applichiamo il filtro al DataFrame solo se l'utente non ha scelto "Tutte le campagne"
-        if campagna_selezionata != "TUTTE LE CAMPAGNE":
-            df_events = df_events[df_events['CAMPAGNA'] == campagna_selezionata]
+        is_calendar_enabled = st.toggle(
+            "📅 Attiva Promemoria su Calendario", 
+            value=st.session_state.form_data.get("salva_su_calendario", False)
+        )
+        st.session_state.form_data["salva_su_calendario"] = is_calendar_enabled
+
+        if is_calendar_enabled:
+            col_date, col_time = st.columns(2)
             
-            # Controllo di sicurezza se il filtro svuota il dataframe
-            if df_events.empty:
-                st.warning("⚠️ Nessun dato disponibile per la campagna selezionata.")
-                st.stop()
-    else:
-        st.info("ℹ️ Colonna 'CAMPAGNA' non trovata nel file. L'analisi mostrerà tutti i dati disponibili.")
+            with col_date:
+                current_date_val = st.session_state.form_data["promemoria"]
+                chosen_date = st.date_input(
+                    "Data Promemoria", 
+                    value=current_date_val if current_date_val else datetime.now().date()
+                )
+                st.session_state.form_data["promemoria"] = chosen_date
+                
+            with col_time:
+                current_time_val = st.session_state.form_data.get("orario_promemoria", time(9, 0))
+                if current_time_val is None:
+                    current_time_val = time(9, 0)
+                    
+                chosen_time = st.time_input("Orario Promemoria", value=current_time_val)
+                st.session_state.form_data["orario_promemoria"] = chosen_time
 
-
-    # PULIZIA STRINGHE
-    df_events['TIPO EVENTO'] = df_events['TIPO EVENTO'].astype(str).str.strip()
-    df_events['TIPO EVENTO'] = df_events['TIPO EVENTO'].str.replace('TELEFONATO -', 'TELEFONATO', regex=False)
-    df_events = df_events[~df_events['TIPO EVENTO'].isin(['nan', 'None', '', 'NaN'])]
-
-    # PANORAMICA EVENTI
-    st.write("")
-    st.write("")
-    with st.expander("👁️ Panoramica Eventi"):
-        distribuzione_eventi(df_events)
-
-
-    # PERFORMANCE TEAM ---
-    st.write("")
-    st.write("")
-    with st.expander("⚡️ Performance Team"):
-        analisi_performance_utenti(df_events)
-
-    
-    # --- SEZIONE AZIENDE PIÙ COINVOLTE ---
-    st.write("")
-    st.write("")
-    with st.expander("🏢 Analisi Coinvolgimento Aziende"):
-        coinvolgimento_aziende(df_events)
+    # --- TAB 2: ALLEGATI ---
+    with tab_allegati:
+        st.write("")
+        st.write("### Allegati")
+        st.write("")
+        uploaded_files = st.file_uploader(
+            "Trascina qui i file o tocca per scattare una foto/selezionare un allegato",
+            type=["png", "jpg", "jpeg", "pdf", "docx", "xlsx"],
+            accept_multiple_files=True
+        )
         
+        st.session_state.form_data["allegati"] = []
+        if uploaded_files:
+            for file in uploaded_files:
+                st.session_state.form_data["allegati"].append({
+                    "nome_file": file.name,
+                    "tipo_file": file.type,
+                    "dimensione": file.size
+                })
+            st.success(f"📎 {len(uploaded_files)} file pronti per essere salvati con questo evento.")
+        st.write("")
+        st.write("")
+
+    # --- TAB 3: CONDIVISIONE EMAIL ---
+    with tab_condividi:
+        st.write("")
+        st.write("### Condividi Evento via Email")
+        st.caption("Inoltra l'evento a un collega per richiedere valutazione tecniche o informazioni commerciali.")
+        
+        st.session_state.email_collega = st.text_input(
+            "Email", 
+            value=st.session_state.email_collega,
+            placeholder="esempio@azienda.com"
+        )
+        
+        # BOX DI INPUT AUTOPRECOMPILATO PER L'OGGETTO EMAIL
+        st.session_state.oggetto_email = st.text_input(
+            "Oggetto Email",
+            value=st.session_state.oggetto_email,
+            placeholder="Es. Segnalazione attività commerciale"
+        )
+        
+        st.session_state.messaggio_email_personalizzato = st.text_area(
+            "Aggiungi un messaggio (Opzionale)",
+            value=st.session_state.messaggio_email_personalizzato,
+            placeholder="Es. Ciao, ti giro questo report perché il cliente ha chiesto informazioni sulla tua area di competenza...",
+            height=300
+        )
+        
+        st.session_state.invia_email_attivo = st.toggle(
+            "✉️ Invia email automaticamente quando premi 'SALVA EVENTO'", 
+            value=st.session_state.invia_email_attivo
+        )
+        st.write("")
+        st.write("")
+
+    # --- 6. RIASSUNTO VOCALE DI CONFERMA ---
+    if st.session_state.form_data["note"] != "" and not st.session_state.audio_summary_done:
+        d = st.session_state.form_data
+        promemoria_str = d['promemoria'].strftime('%d/%m/%Y') if d['promemoria'] else 'non impostato'
+        orario_str = d['orario_promemoria'].strftime('%H:%M') if d['orario_promemoria'] else '09:00'
+        
+        with st.spinner("Morpheus sta preparando il riepilogo vocale..."):
+            prompt_riepilogo = f"""
+            Sei Morpheus, l'assistente virtuale del commerciale. 
+            Genera un breve discorso di conferma (massimo 3-4 frasi) in modo naturale, fluido e colloquiale ma professionale.
+            Usa questi dati reali per formulare il discorso:
+            - Cliente (Azienda): {d['cliente']}
+            - Tipologia evento (es. telefonata, visita, email): {d['tipologia']}
+            - Contatto dell'azienda (con eventuale ruolo/ufficio): {d['contatto'] if d['contatto'] else 'non specificato'}
+            - Oggetto: {d['oggetto'] if d['oggetto'] else 'non specificato'}
+            - Esito dell'incontro (Vibes): {d['vibes'] if d['vibes'] else 'non specificato'}
+            - Esito Concreto: {d['esito'] if d['esito'] else 'non specificato'}
+            - Note e dettagli rilevanti: {d['note']}
+            - Prossimo Step: {d['next_step'] if d['next_step'] else 'nessuno'}
+            - Data Promemoria: {promemoria_str}
+            - Orario Rilevato per Calendario: {orario_str}
+            - Nota rilevata da inviare al collega: {st.session_state.messaggio_email_personalizzato if st.session_state.messaggio_email_personalizzato else 'nessuna'}
+            
+            REGOLE DI TONO E STRUTTURA:
+            - Non fare un elenco della spesa. Il discorso deve essere fluido e continuo.
+            - Specifica subito la tipologia di evento e con chi hai parlato.
+            - Se l'esito è "Positivo 👍", usa un tono soddisfatto. Se è "Negativo 👎", usa un tono pragmatico.
+            - Riassumi brevemente il fulcro delle note e l'esito concreto della trattativa.
+            - COMUNICA L'ORARIO: Nel riassunto, specifica l'orario esatto che hai assegnato per il calendario (es. "...e ho impostato il promemoria per il {promemoria_str} alle ore {orario_str}"). Rendi la frase naturale.
+            - SE C'È UNA NOTA PER IL COLLEGA: Includi nel discorso che hai rilevato e salvato anche il messaggio specifico da inviare via mail al collega (es. "...e ho preparato la nota per il tuo collega").
+            - Chiudi dicendo che se è tutto corretto si può procedere con il salvataggio.
+            - Non usare elenchi puntati, numeri o asterischi, scrivi solo testo liscio da leggere direttamente.
+            """
+            
+            try:
+                response_testo = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt_riepilogo}]
+                )
+                testo_fluido = response_testo.choices[0].message.content
+                
+                audio_msg = speak(testo_fluido)
+                if audio_msg:
+                    st.audio(audio_msg, autoplay=True)
+                    st.session_state.audio_summary_done = True
+            except Exception as e:
+                st.error(f"Errore nella generazione del riepilogo AI: {e}")
+
+    # --- 7. SALVATAGGIO ---
+    st.divider()
+    if st.button("💾 SALVA EVENTO SUL DATABASE", type="primary", use_container_width=True):
+        st.balloons()
+        
+        calendario_ok = False
+        email_ok = False
+        
+        # Inizializzazione istantanea dell'account token tramite credenziali dei Secrets
+        account_aziendale = ottieni_account_exchange()
+        
+        if account_aziendale:
+            # --- BLOCCO DI SINCRO CON MICROSOFT EXCHANGE ---
+            if st.session_state.form_data["salva_su_calendario"]:
+                with st.spinner("Sincronizzazione appuntamento su Outlook in corso..."):
+                    calendario_ok = crea_evento_su_exchange(
+                        account=account_aziendale,
+                        user_email=utente_connesso["email"],
+                        dati_evento=st.session_state.form_data
+                    )
+                    
+            # --- BLOCCO INVIO EMAIL DI CONDIVISIONE ---
+            if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
+                destinatario_notifica = st.session_state.email_collega
+                with st.spinner(f"Invio riepilogo email a {destinatario_notifica}..."):
+                    email_ok = invia_email_collega(
+                        account=account_aziendale,
+                        user_email=utente_connesso["email"],
+                        user_real_name=utente_connesso["nome"], 
+                        email_collega=st.session_state.email_collega,
+                        oggetto_email=st.session_state.oggetto_email, 
+                        dati_evento=st.session_state.form_data,
+                        messaggio_personalizzato=st.session_state.messaggio_email_personalizzato,
+                        file_caricati=uploaded_files
+                    )
+        else:
+            st.error("❌ Impossibile stabilire una connessione sicura con l'infrastruttura Microsoft Exchange.")
+
+        # --- ELABORAZIONE DATI FINALI ---
+        final_data = st.session_state.form_data.copy()
+        if final_data["promemoria"]:
+            final_data["promemoria"] = final_data["promemoria"].strftime("%Y-%m-%d")
+            
+        if final_data["orario_promemoria"]:
+            final_data["orario_promemoria"] = final_data["orario_promemoria"].strftime("%H:%M")
+            
+        st.session_state.campi_mancanti = []
+        
+        # --- BANNER DI CONFERMA STABILI ---
+        st.success("✅ Evento registrato correttamente nel database aziendale!")
+        
+        if st.session_state.form_data["salva_su_calendario"]:
+            if calendario_ok:
+                st.success("📅 Appuntamento inserito nel tuo calendario di Outlook!")
+            else:
+                st.error("❌ Sincronizzazione calendario fallita per un problema di autorizzazione.")
+            
+        if st.session_state.get("invia_email_attivo", False) and st.session_state.get("email_collega", ""):
+            if email_ok:
+                st.success(f"📧 Email inviata con successo a {destinatario_notifica} e registrata nella posta inviata!")
+            else:
+                st.error("❌ Spedizione e-mail fallita. Verifica le restrizioni sul Tenant di Azure.")
+            
+        st.write("Dati inviati:", final_data)
